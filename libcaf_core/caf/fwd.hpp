@@ -342,6 +342,8 @@ class manager;
 
 namespace detail {
 
+class unsafe_flow_msg;
+
 template <class>
 class stream_distribution_tree;
 

@@ -135,12 +135,19 @@ caf_add_component(
     src/detail/tick_emitter.cpp
     src/detail/token_based_credit_controller.cpp
     src/detail/type_id_list_builder.cpp
+    src/detail/unsafe_flow_msg.cpp
     src/downstream_manager.cpp
     src/downstream_manager_base.cpp
     src/error.cpp
     src/event_based_actor.cpp
     src/execution_unit.cpp
     src/exit_reason_strings.cpp
+    src/flow/batch.cpp
+    src/flow/coordinated.cpp
+    src/flow/coordinated_publisher_base.cpp
+    src/flow/coordinator.cpp
+    src/flow/disposable.cpp
+    src/flow/subscriber_base.cpp
     src/forwarding_actor_proxy.cpp
     src/group.cpp
     src/group_manager.cpp
@@ -280,6 +287,7 @@ caf_add_component(
     dynamic_spawn
     error
     expected
+    flow
     function_view
     fused_downstream_manager
     handles

@@ -21,6 +21,11 @@
 #include "caf/detail/unordered_flat_map.hpp"
 #include "caf/error.hpp"
 #include "caf/extend.hpp"
+#include "caf/flow/coordinated_publisher_base.hpp"
+#include "caf/flow/coordinator.hpp"
+#include "caf/flow/disposable.hpp"
+#include "caf/flow/fwd.hpp"
+#include "caf/flow/subscriber_base.hpp"
 #include "caf/fwd.hpp"
 #include "caf/inbound_path.hpp"
 #include "caf/intrusive/drr_cached_queue.hpp"
@@ -71,7 +76,8 @@ CAF_CORE_EXPORT skippable_result drop(scheduled_actor*, message&);
 /// A cooperatively scheduled, event-based actor implementation.
 class CAF_CORE_EXPORT scheduled_actor : public local_actor,
                                         public resumable,
-                                        public non_blocking_actor_base {
+                                        public non_blocking_actor_base,
+                                        public flow::coordinator {
 public:
   // -- nested enums -----------------------------------------------------------
 
@@ -480,6 +486,18 @@ public:
   /// Returns the queue of the mailbox that stores `downstream_msg` messages.
   downstream_queue& get_downstream_queue();
 
+  // -- caf::flow API ----------------------------------------------------------
+
+  /// Observes items from `source` on this actor.
+  /// @note Include `caf/scheduled_actor/flow.hpp` for this member function.
+  template <class T>
+  flow::coordinated_publisher_ptr<T> observe(flow::publisher_ptr<T> source);
+
+  /// Makes items from `source` visible outside of this actor.
+  /// @note Include `caf/scheduled_actor/flow.hpp` for this member function.
+  template <class T>
+  flow::publisher_ptr<T> lift(flow::coordinated_publisher_ptr<T> source);
+
   // -- inbound_path management ------------------------------------------------
 
   /// Creates a new path for incoming stream traffic from `sender`.
@@ -632,7 +650,8 @@ public:
   bool alive() const noexcept {
     return !bhvr_stack_.empty() || !awaited_responses_.empty()
            || !multiplexed_responses_.empty() || !stream_managers_.empty()
-           || !pending_stream_managers_.empty();
+           || !pending_stream_managers_.empty()
+           || !watched_disposables_.empty();
   }
 
   auto max_batch_delay() const noexcept {
@@ -707,6 +726,8 @@ protected:
 #endif // CAF_ENABLE_EXCEPTIONS
 
 private:
+  // -- utilities for instrumenting actors -------------------------------------
+
   template <class F>
   intrusive::task_result run_with_metrics(mailbox_element& x, F body) {
     if (metrics_.mailbox_time) {
@@ -723,6 +744,31 @@ private:
       return body();
     }
   }
+
+  // -- scheduling of caf::flow events -----------------------------------------
+
+  struct flow_event {
+    enum type_t { request, cancel };
+    type_t type;
+    flow::coordinated_publisher_base_ptr source;
+    flow::subscriber_base_ptr sink;
+    size_t arg;
+  };
+
+  void dispatch_request(flow::coordinated_publisher_base* src,
+                        flow::subscriber_base* snk, size_t n) override;
+
+  void dispatch_cancel(flow::coordinated_publisher_base* src,
+                       flow::subscriber_base* snk) override;
+
+  void watch(flow::disposable* obj) override;
+
+  void handle_flow_events();
+
+  void drop_disposed_flows();
+
+  std::vector<flow_event> flow_events_;
+  std::vector<flow::disposable_ptr> watched_disposables_;
 };
 
 } // namespace caf

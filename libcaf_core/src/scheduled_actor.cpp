@@ -12,6 +12,7 @@
 #include "caf/detail/meta_object.hpp"
 #include "caf/detail/private_thread.hpp"
 #include "caf/detail/sync_request_bouncer.hpp"
+#include "caf/detail/unsafe_flow_msg.hpp"
 #include "caf/inbound_path.hpp"
 #include "caf/scheduler/abstract_coordinator.hpp"
 
@@ -621,6 +622,11 @@ scheduled_actor::categorize(mailbox_element& x) {
     }
     return message_category::internal;
   }
+  if (auto view = make_typed_message_view<detail::unsafe_flow_msg>(content)) {
+    get<0>(view).exec();
+    handle_flow_events();
+    return message_category::internal;
+  }
   if (content.match_elements<timeout_msg>()) {
     CAF_ASSERT(x.mid.is_async());
     auto& tm = content.get_as<timeout_msg>(0);
@@ -905,6 +911,12 @@ bool scheduled_actor::finalize() {
     return false;
   CAF_LOG_DEBUG("actor has no behavior and is ready for cleanup");
   CAF_ASSERT(!has_behavior());
+  while (!watched_disposables_.empty()) {
+    for (auto& ptr : watched_disposables_)
+      ptr->dispose();
+    watched_disposables_.clear();
+    handle_flow_events();
+  }
   on_exit();
   bhvr_stack_.cleanup();
   cleanup(std::move(fail_state_), context());
@@ -1204,6 +1216,52 @@ std::vector<stream_manager*> scheduled_actor::active_stream_managers() {
   std::vector<stream_manager*> result;
   active_stream_managers(result);
   return result;
+}
+
+// -- scheduling of caf::flow events -------------------------------------------
+
+void scheduled_actor::dispatch_request(flow::coordinated_publisher_base* source,
+                                       flow::subscriber_base* sink, size_t n) {
+  CAF_ASSERT(source != nullptr);
+  CAF_ASSERT(sink != nullptr);
+  CAF_ASSERT(n > 0);
+  flow_events_.emplace_back(flow_event{flow_event::request, source, sink, n});
+}
+
+void scheduled_actor::dispatch_cancel(flow::coordinated_publisher_base* source,
+                                      flow::subscriber_base* sink) {
+  CAF_ASSERT(source != nullptr);
+  CAF_ASSERT(sink != nullptr);
+  flow_events_.emplace_back(flow_event{flow_event::cancel, source, sink, 0u});
+}
+
+void scheduled_actor::watch(flow::disposable* obj) {
+  CAF_ASSERT(obj != nullptr);
+  watched_disposables_.emplace_back(obj);
+}
+
+void scheduled_actor::handle_flow_events() {
+  while (!flow_events_.empty()) {
+    auto index = size_t{0};
+    do {
+      auto ev = std::move(flow_events_[index]);
+      switch (ev.type) {
+        case flow_event::request:
+          ev.source->on_request(ev.sink.get(), ev.arg);
+          break;
+        default: // flow_event::cancel:
+          ev.source->on_cancel(ev.sink.get());
+      }
+      ++index;
+    } while (index < flow_events_.size());
+    flow_events_.clear();
+  }
+}
+
+void scheduled_actor::drop_disposed_flows() {
+  auto disposed = [](auto& ptr) { return ptr->disposed(); };
+  auto& xs = watched_disposables_;
+  xs.erase(std::remove_if(xs.begin(), xs.end(), disposed), xs.end());
 }
 
 } // namespace caf

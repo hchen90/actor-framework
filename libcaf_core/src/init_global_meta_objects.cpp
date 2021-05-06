@@ -10,6 +10,7 @@
 #include "caf/actor_system.hpp"
 #include "caf/byte_buffer.hpp"
 #include "caf/config_value.hpp"
+#include "caf/detail/unsafe_flow_msg.hpp"
 #include "caf/downstream_msg.hpp"
 #include "caf/error.hpp"
 #include "caf/group.hpp"

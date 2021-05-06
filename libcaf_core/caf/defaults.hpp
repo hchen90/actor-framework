@@ -119,3 +119,10 @@ constexpr auto cached_udp_buffers = size_t{10};
 constexpr auto max_pending_msgs = size_t{10};
 
 } // namespace caf::defaults::middleman
+
+namespace caf::defaults::flow {
+
+constexpr auto batch_size = size_t{64};
+constexpr auto buffer_size = size_t{512};
+
+} // namespace caf::defaults::flow
