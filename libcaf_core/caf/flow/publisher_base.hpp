@@ -12,15 +12,15 @@
 
 namespace caf::flow {
 
-class CAF_CORE_EXPORT coordinated_publisher_base : public virtual ref_counted {
+class CAF_CORE_EXPORT publisher_base : public virtual ref_counted {
 public:
   friend class coordinator;
 
-  explicit coordinated_publisher_base(coordinator* ctx) : ctx_(ctx) {
+  explicit publisher_base(coordinator* ctx) : ctx_(ctx) {
     // nop
   }
 
-  ~coordinated_publisher_base() override;
+  ~publisher_base() override;
 
   virtual void on_request(subscriber_base* sink, size_t n) = 0;
   virtual void on_cancel(subscriber_base* sink) = 0;
@@ -34,7 +34,6 @@ protected:
   void do_subscribe(subscriber_base* snk);
 };
 
-using coordinated_publisher_base_ptr
-  = intrusive_ptr<coordinated_publisher_base>;
+using publisher_base_ptr = intrusive_ptr<publisher_base>;
 
 } // namespace caf::flow

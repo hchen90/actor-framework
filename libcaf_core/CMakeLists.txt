@@ -42,7 +42,7 @@ configure_file("${PROJECT_SOURCE_DIR}/cmake/build_config.hpp.in"
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/caf/detail/build_config.hpp"
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/caf/detail/")
 
-# -- add targets ---------------------------------------------------------------
+#-- add targets -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -
 
 caf_add_component(
   core
@@ -143,10 +143,9 @@ caf_add_component(
     src/execution_unit.cpp
     src/exit_reason_strings.cpp
     src/flow/batch.cpp
-    src/flow/coordinated.cpp
-    src/flow/coordinated_publisher_base.cpp
     src/flow/coordinator.cpp
     src/flow/disposable.cpp
+    src/flow/publisher_base.cpp
     src/flow/subscriber_base.cpp
     src/forwarding_actor_proxy.cpp
     src/group.cpp

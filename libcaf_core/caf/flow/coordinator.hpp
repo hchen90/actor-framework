@@ -8,6 +8,11 @@
 
 #include "caf/detail/core_export.hpp"
 #include "caf/flow/fwd.hpp"
+#include "caf/flow/publisher_base.hpp"
+#include "caf/flow/subscriber_base.hpp"
+#include "caf/flow/subscription.hpp"
+#include "caf/intrusive_ptr.hpp"
+#include "caf/ref_counted.hpp"
 
 namespace caf::flow {
 
@@ -16,24 +21,51 @@ namespace caf::flow {
 /// objects since the coordinator guarantees synchronous execution.
 class CAF_CORE_EXPORT coordinator {
 public:
-  friend class coordinated_subscription;
+  class CAF_CORE_EXPORT subscription_impl : public subscription {
+  public:
+    friend class coordinator;
+
+    subscription_impl(coordinator* ctx, publisher_base_ptr src,
+                      subscriber_base_ptr snk)
+      : ctx_(ctx), src_(std::move(src)), snk_(std::move(snk)) {
+      // nop
+    }
+
+    void request(size_t n) final;
+
+    void cancel() final;
+
+    auto* ctx() const noexcept {
+      return ctx_;
+    }
+
+  private:
+    coordinator* ctx_;
+    publisher_base_ptr src_;
+    subscriber_base_ptr snk_;
+  };
+
+  using subscription_impl_ptr = intrusive_ptr<subscription_impl>;
+
+  friend class subscription_impl;
 
   virtual ~coordinator();
+
+  [[nodiscard]] publisher_factory_ptr make_publisher();
 
 private:
   /// Eventually executes `source->on_request(sink, n)`.
   /// @pre `source != nullptr`.
   /// @pre `sink != nullptr`.
   /// @pre `n > 0`.
-  virtual void dispatch_request(coordinated_publisher_base* source,
-                                subscriber_base* sink, size_t n)
+  virtual void
+  dispatch_request(publisher_base* source, subscriber_base* sink, size_t n)
     = 0;
 
   /// Eventually executes `source->on_cancel(sink)`.
   /// @pre `source != nullptr`.
   /// @pre `sink != nullptr`.
-  virtual void
-  dispatch_cancel(coordinated_publisher_base* source, subscriber_base* sink)
+  virtual void dispatch_cancel(publisher_base* source, subscriber_base* sink)
     = 0;
 
   /// Asks the coordinator to keep its event loop running until `obj` becomes

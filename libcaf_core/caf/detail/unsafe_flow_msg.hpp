@@ -10,7 +10,7 @@
 #include "caf/detail/core_export.hpp"
 #include "caf/error.hpp"
 #include "caf/flow/batch.hpp"
-#include "caf/flow/coordinated_publisher_base.hpp"
+#include "caf/flow/publisher_base.hpp"
 #include "caf/flow/subscriber_base.hpp"
 #include "caf/flow/subscription.hpp"
 
@@ -19,14 +19,13 @@ namespace caf::detail {
 class CAF_CORE_EXPORT unsafe_flow_msg {
 public:
   template <class T>
-  static void subscribe_impl(flow::coordinated_publisher_base* source,
-                             flow::subscriber_base* sink) {
-    auto dptr = static_cast<flow::coordinated_publisher<T>*>(source);
+  static void
+  subscribe_impl(flow::publisher_base* source, flow::subscriber_base* sink) {
+    auto dptr = static_cast<flow::publisher<T>*>(source);
     dptr->subscribe(static_cast<flow::subscriber<T>*>(sink));
   }
 
-  using subscribe_fn = void (*)(flow::coordinated_publisher_base*,
-                                flow::subscriber_base*);
+  using subscribe_fn = void (*)(flow::publisher_base*, flow::subscriber_base*);
 
   struct nop {
     void exec() const {
@@ -96,7 +95,7 @@ public:
   }
 
   struct subscribe {
-    flow::coordinated_publisher_base_ptr source;
+    flow::publisher_base_ptr source;
     flow::subscriber_base_ptr sink;
     subscribe_fn fn;
     void exec() const {
@@ -106,8 +105,7 @@ public:
   };
 
   template <class T>
-  unsafe_flow_msg(flow::coordinated_publisher_ptr<T> source,
-                  flow::subscriber_ptr<T> sink)
+  unsafe_flow_msg(flow::publisher_ptr<T> source, flow::subscriber_ptr<T> sink)
     : event(subscribe{std::move(source), std::move(sink), subscribe_impl<T>}) {
     // nop
   }

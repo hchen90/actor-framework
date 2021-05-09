@@ -1220,7 +1220,7 @@ std::vector<stream_manager*> scheduled_actor::active_stream_managers() {
 
 // -- scheduling of caf::flow events -------------------------------------------
 
-void scheduled_actor::dispatch_request(flow::coordinated_publisher_base* source,
+void scheduled_actor::dispatch_request(flow::publisher_base* source,
                                        flow::subscriber_base* sink, size_t n) {
   CAF_ASSERT(source != nullptr);
   CAF_ASSERT(sink != nullptr);
@@ -1228,7 +1228,7 @@ void scheduled_actor::dispatch_request(flow::coordinated_publisher_base* source,
   flow_events_.emplace_back(flow_event{flow_event::request, source, sink, n});
 }
 
-void scheduled_actor::dispatch_cancel(flow::coordinated_publisher_base* source,
+void scheduled_actor::dispatch_cancel(flow::publisher_base* source,
                                       flow::subscriber_base* sink) {
   CAF_ASSERT(source != nullptr);
   CAF_ASSERT(sink != nullptr);

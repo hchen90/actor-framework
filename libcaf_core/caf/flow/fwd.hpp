@@ -8,7 +8,19 @@
 
 namespace caf::flow {
 
+template <class>
+struct has_impl_include {
+  static constexpr bool value = false;
+};
+
+template <class T>
+constexpr bool has_impl_include_v = has_impl_include<T>::value;
+
 class batch;
+
+class publisher_factory;
+
+class publisher_factory_ptr;
 
 class disposable;
 
@@ -28,23 +40,26 @@ class subscriber;
 template <class T>
 using subscriber_ptr = intrusive_ptr<subscriber<T>>;
 
+class coordinator;
+
+class publisher_base;
+
+using publisher_base_ptr = intrusive_ptr<publisher_base>;
+
 template <class T>
 class publisher;
 
 template <class T>
 using publisher_ptr = intrusive_ptr<publisher<T>>;
 
-class coordinator;
-
-class coordinated_publisher_base;
-
-using coordinated_publisher_base_ptr
-  = intrusive_ptr<coordinated_publisher_base>;
-
-template <class T>
-class coordinated_publisher;
-
-template <class T>
-using coordinated_publisher_ptr = intrusive_ptr<coordinated_publisher<T>>;
-
 } // namespace caf::flow
+
+namespace caf::flow::async {
+
+template <class T>
+class publisher;
+
+template <class T>
+using publisher_ptr = intrusive_ptr<publisher<T>>;
+
+} // namespace caf::flow::async

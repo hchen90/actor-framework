@@ -76,6 +76,10 @@ public:
 
   bool load(binary_deserializer& f);
 
+  void swap(batch& other) {
+    data_.swap(other.data_);
+  }
+
 private:
   template <class Inspector>
   bool save_impl(Inspector& f) const;

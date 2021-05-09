@@ -20,8 +20,16 @@
   CAF_MESSAGE("WHEN " description);                                            \
   if (true)
 
+#define AND_WHEN(description)                                                  \
+  CAF_MESSAGE("AND WHEN " description);                                        \
+  if (true)
+
 #define THEN(description)                                                      \
   CAF_MESSAGE("THEN " description);                                            \
+  if (true)
+
+#define AND_THEN(description)                                                  \
+  CAF_MESSAGE("AND THEN " description);                                        \
   if (true)
 
 #define AND(description)                                                       \
@@ -36,6 +44,8 @@
 #define CHECK_LE(lhs, rhs) CAF_CHECK_LESS_OR_EQUAL(lhs, rhs)
 #define CHECK_GT(lhs, rhs) CAF_CHECK_GREATER(lhs, rhs)
 #define CHECK_GE(lhs, rhs) CAF_CHECK_GREATER_OR_EQUAL(lhs, rhs)
+
+#define FAIL(message) CAF_FAIL(message)
 
 #define REQUIRE(what) CAF_REQUIRE(what)
 #define REQUIRE_EQ(lhs, rhs) CAF_REQUIRE_EQUAL(lhs, rhs)

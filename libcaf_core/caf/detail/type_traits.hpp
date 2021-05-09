@@ -56,6 +56,16 @@ namespace caf::detail {
 template <class T>
 constexpr T* null_v = nullptr;
 
+template <class Left, class Right>
+struct left_oracle {
+  using type = Left;
+};
+
+// Useful to force dependent evaluation of Left. For example in template
+// functions where only Right is actually a template parameter.
+template <class Left, class Right>
+using left_t = typename left_oracle<Left, Right>::type;
+
 // -- backport of C++14 additions ----------------------------------------------
 
 template <class T>

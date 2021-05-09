@@ -21,10 +21,10 @@
 #include "caf/detail/unordered_flat_map.hpp"
 #include "caf/error.hpp"
 #include "caf/extend.hpp"
-#include "caf/flow/coordinated_publisher_base.hpp"
 #include "caf/flow/coordinator.hpp"
 #include "caf/flow/disposable.hpp"
 #include "caf/flow/fwd.hpp"
+#include "caf/flow/publisher_base.hpp"
 #include "caf/flow/subscriber_base.hpp"
 #include "caf/fwd.hpp"
 #include "caf/inbound_path.hpp"
@@ -491,12 +491,20 @@ public:
   /// Observes items from `source` on this actor.
   /// @note Include `caf/scheduled_actor/flow.hpp` for this member function.
   template <class T>
-  flow::coordinated_publisher_ptr<T> observe(flow::publisher_ptr<T> source);
+  flow::publisher_ptr<T> observe(flow::async::publisher_ptr<T> source) {
+    static_assert(flow::has_impl_include_v<detail::left_t<scheduled_actor, T>>,
+                  "include 'caf/scheduled_actor/flow.hpp' for this method");
+    return observe_impl(std::move(source));
+  }
 
   /// Makes items from `source` visible outside of this actor.
   /// @note Include `caf/scheduled_actor/flow.hpp` for this member function.
   template <class T>
-  flow::publisher_ptr<T> lift(flow::coordinated_publisher_ptr<T> source);
+  flow::async::publisher_ptr<T> lift(flow::publisher_ptr<T> source) {
+    static_assert(flow::has_impl_include_v<detail::left_t<scheduled_actor, T>>,
+                  "include 'caf/scheduled_actor/flow.hpp' for this method");
+    return lift_impl(std::move(source));
+  }
 
   // -- inbound_path management ------------------------------------------------
 
@@ -747,18 +755,24 @@ private:
 
   // -- scheduling of caf::flow events -----------------------------------------
 
+  template <class T>
+  flow::publisher_ptr<T> observe_impl(flow::async::publisher_ptr<T> source);
+
+  template <class T>
+  flow::async::publisher_ptr<T> lift_impl(flow::publisher_ptr<T> source);
+
   struct flow_event {
     enum type_t { request, cancel };
     type_t type;
-    flow::coordinated_publisher_base_ptr source;
+    flow::publisher_base_ptr source;
     flow::subscriber_base_ptr sink;
     size_t arg;
   };
 
-  void dispatch_request(flow::coordinated_publisher_base* src,
-                        flow::subscriber_base* snk, size_t n) override;
+  void dispatch_request(flow::publisher_base* src, flow::subscriber_base* snk,
+                        size_t n) override;
 
-  void dispatch_cancel(flow::coordinated_publisher_base* src,
+  void dispatch_cancel(flow::publisher_base* src,
                        flow::subscriber_base* snk) override;
 
   void watch(flow::disposable* obj) override;

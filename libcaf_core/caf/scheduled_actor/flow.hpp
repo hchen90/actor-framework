@@ -7,18 +7,22 @@
 #include "caf/actor.hpp"
 #include "caf/detail/unsafe_flow_msg.hpp"
 #include "caf/flow/batch.hpp"
-#include "caf/flow/coordinated.hpp"
 #include "caf/flow/coordinator.hpp"
 #include "caf/flow/disposable.hpp"
 #include "caf/flow/publisher.hpp"
+#include "caf/flow/publisher_factory.hpp"
 #include "caf/flow/subscriber.hpp"
 #include "caf/scheduled_actor.hpp"
 
 namespace caf::detail {
 
 template <class T>
-class publisher_proxy : public flow::publisher<T> {
+class publisher_proxy : public flow::async::publisher<T> {
 public:
+  using coordinated_subscription = flow::coordinator::subscription_impl;
+
+  using coordinated_subscription_ptr = flow::coordinator::subscription_impl_ptr;
+
   class subscription_impl : public flow::subscription {
   public:
     subscription_impl(actor hdl, flow::subscription_ptr decorated)
@@ -81,7 +85,7 @@ public:
     }
 
     void on_subscribe(flow::subscription_ptr sub) {
-      if (auto dptr = static_cast<flow::coordinated_subscription*>(sub.get())) {
+      if (auto dptr = dynamic_cast<coordinated_subscription*>(sub.get())) {
         sub_.reset(dptr);
         sink_->on_subscribe(make_counted<subscription_impl>(hdl_, sub_));
       } else {
@@ -104,10 +108,10 @@ public:
 
     actor hdl_;
     flow::subscriber_ptr<T> sink_;
-    flow::coordinated_subscription_ptr sub_;
+    coordinated_subscription_ptr sub_;
   };
 
-  publisher_proxy(actor hdl, flow::coordinated_publisher_ptr<T> src)
+  publisher_proxy(actor hdl, flow::publisher_ptr<T> src)
     : hdl_(std::move(hdl)), src_(std::move(src)) {
     // nop
   }
@@ -119,7 +123,7 @@ public:
 
 private:
   actor hdl_;
-  flow::coordinated_publisher_ptr<T> src_;
+  flow::publisher_ptr<T> src_;
 };
 
 /// Fetches items from a foreign publisher and forwards then to a coordinated
@@ -157,17 +161,26 @@ private:
 
 } // namespace caf::detail
 
+namespace caf::flow {
+
+template <>
+struct has_impl_include<scheduled_actor> {
+  static constexpr bool value = true;
+};
+
+} // namespace caf::flow
+
 namespace caf {
 
 template <class T>
-flow::coordinated_publisher_ptr<T>
-scheduled_actor::observe(flow::publisher_ptr<T> source) {
+flow::publisher_ptr<T>
+scheduled_actor::observe_impl(flow::async::publisher_ptr<T> source) {
   // Internally, we have a broadcaster called `local` that makes its inputs
   // available to coordinated subscribers. The forwarder simply converts all
   // function calls from the source to messages. After receiving the messages,
   // the actor then calls the appropriate member functions on `local`, including
   // on_subscribe().
-  auto local = make_counted<flow::coordinated_broadcaster<T>>(this);
+  auto local = make_counted<flow::broadcaster<T>>(this);
   watch(local.get());
   auto hdl = actor_cast<actor>(this);
   auto fwd = make_counted<detail::item_forwarder<T>>(std::move(hdl), local);
@@ -176,8 +189,8 @@ scheduled_actor::observe(flow::publisher_ptr<T> source) {
 }
 
 template <class T>
-flow::publisher_ptr<T>
-scheduled_actor::lift(flow::coordinated_publisher_ptr<T> source) {
+flow::async::publisher_ptr<T>
+scheduled_actor::lift_impl(flow::publisher_ptr<T> source) {
   watch(source.get());
   return make_counted<detail::publisher_proxy<T>>(actor_cast<actor>(this),
                                                   std::move(source));
