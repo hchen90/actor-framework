@@ -56,6 +56,15 @@ public:
     init(guard);
   }
 
+  bool has_data() {
+    if (local.pos_ != local.end_) {
+      return true;
+    } else {
+      std::unique_lock guard{mtx_};
+      return !batches_.empty();
+    }
+  }
+
   /// Tries to fetch the next value. If no value exists, the first element in
   /// the tuple is `nullptr`. The second value indicates whether the stream was
   /// closed. If the stream was closed, the third value is `nullptr` if
@@ -69,7 +78,7 @@ public:
         if (sub_)
           sub_->request(local.cache_.size());
       }
-      return {local.pos_, false, nullptr};
+      return {res, false, nullptr};
     } else if (std::unique_lock guard{mtx_}; !batches_.empty()) {
       batches_.front().swap(local.cache_);
       batches_.pop_front();
@@ -133,7 +142,7 @@ protected:
   /// Protects fields that we access with both the consumer and the producer.
   mutable std::mutex mtx_;
   subscription_ptr sub_;
-  bool done_;
+  bool done_ = false;
   error err_;
   std::list<batch> batches_;
 
