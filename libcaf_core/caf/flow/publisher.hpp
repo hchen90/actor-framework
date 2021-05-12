@@ -23,6 +23,15 @@
 
 namespace caf::flow {
 
+template <class T>
+struct item_type_oracle;
+
+template <class T>
+struct item_type_oracle<intrusive_ptr<T>> : item_type_oracle<T> {};
+
+template <class T>
+using item_type_t = typename item_type_oracle<T>::type;
+
 /// An item source that is only visible in the scope of a @ref coordinator. May
 /// the lifted to an @ref async::publisher by the coordinator in order to make
 /// the items visible to other parts of the system.
@@ -33,7 +42,7 @@ class publisher : public publisher_base, public disposable {
 public:
   using super = publisher_base;
 
-  using observed_type = T;
+  using item_type = T;
 
   explicit publisher(coordinator* ctx) : super(ctx) {
     // nop
@@ -59,6 +68,11 @@ public:
   publisher_ptr<T> take(size_t n);
 };
 
+template <class T>
+struct item_type_oracle<publisher<T>> {
+  using type = T;
+};
+
 /// @relates publisher
 template <class T>
 using publisher_ptr = intrusive_ptr<publisher<T>>;
@@ -73,214 +87,21 @@ public:
 
 // -- broadcasting -------------------------------------------------------------
 
-/// Broadcasts its inputs to all subscribers without modifying them.
+/// Base type for processors with a buffer that broadcasts output to all
+/// subscribers.
 template <class T>
-class broadcaster : public processor<T, T> {
+class buffered_publisher : public publisher<T> {
 public:
-  using super = processor<T, T>;
-
-  struct input_t {
-    size_t offset;
-    batch items;
-  };
+  using super = publisher<T>;
 
   struct output_t {
     size_t demand;
     subscriber_ptr<T> sink;
   };
 
-  explicit broadcaster(coordinator* ctx) : super(ctx) {
-    // nop
-  }
-
-  void on_complete() override {
-    done_ = true;
-    sub_ = nullptr;
-    if (inputs_.empty()) {
-      for (auto& out : outputs_)
-        out.sink->on_complete();
-      outputs_.clear();
-    }
-  }
-
-  void on_error(const error& what) override {
-    done_ = true;
-    sub_ = nullptr;
-    for (auto& out : outputs_)
-      out.sink->on_error(what);
-    inputs_.clear();
-    outputs_.clear();
-  }
-
-  void on_next(span<const T> items) override {
-    if (auto n = push(items); n != items.size())
-      inputs_.emplace_back(input_t{0, make_batch(items.subspan(n))});
-  }
-
-  void on_batch(const batch& buf) override {
-    auto items = buf.items<T>();
-    if (auto n = push(items); n != items.size())
-      inputs_.emplace_back(input_t{n, buf});
-  }
-
-  void on_subscribe(subscription_ptr sub) override {
-    if (!sub_) {
-      sub_ = std::move(sub);
-      sub_->request(defaults::flow::buffer_size);
-    } else {
-      sub->cancel();
-    }
-  }
-
-  void on_request(subscriber_base* sink, size_t n) override {
-    if (auto i = find(sink); i != outputs_.end()) {
-      i->demand += n;
-      update_max_demand();
-      try_push();
-    }
-  }
-
-  void on_cancel(subscriber_base* sink) override {
-    if (auto i = find(sink); i != outputs_.end()) {
-      outputs_.erase(i);
-      if (outputs_.empty()) {
-        inputs_.clear();
-        done_ = true;
-        sub_->cancel();
-      } else {
-        update_max_demand();
-        try_push();
-      }
-    }
-  }
-
-  void subscribe(subscriber_ptr<T> sink) override {
-    if (done_) {
-      sink->on_complete();
-    } else {
-      max_demand_ = 0;
-      outputs_.emplace_back(output_t{0u, sink});
-      super::do_subscribe(sink.get());
-    }
-  }
-
-  void dispose() override {
-    done_ = true;
-    if (sub_) {
-      sub_->cancel();
-      sub_ = nullptr;
-    }
-    inputs_.clear();
-    for (auto& out : outputs_)
-      out.sink->on_complete();
-    outputs_.clear();
-  }
-
-  bool disposed() const noexcept override {
-    return done_ && inputs_.empty() && outputs_.empty();
-  }
-
-private:
-  size_t push(span<const T> items) {
-    auto n = std::min(items.size(), max_demand_);
-    if (n > 0) {
-      CAF_ASSERT(inputs_.empty());
-      auto selection = items.subspan(0, n);
-      for (auto& out : outputs_) {
-        out.demand -= n;
-        out.sink->on_next(selection);
-      }
-      if (sub_)
-        sub_->request(n);
-    }
-    return n;
-  }
-
-  void try_push() {
-    size_t total = 0;
-    while (max_demand_ > 0 && !inputs_.empty()) {
-      auto& [offset, buf] = inputs_[0];
-      auto n = std::min(buf.size() - offset, max_demand_);
-      auto items = buf.template items<T>().subspan(offset, n);
-      for (auto& out : outputs_) {
-        out.demand -= n;
-        out.sink->on_next(items);
-      }
-      max_demand_ -= n;
-      if (n + offset == buf.size()) {
-        inputs_.erase(inputs_.begin());
-      } else {
-        CAF_ASSERT(max_demand_ == 0);
-        offset += n;
-      }
-      total += n;
-    }
-    if (total > 0 && sub_)
-      sub_->request(total);
-  }
-
-  auto find(subscriber_base* sink) {
-    auto pred = [sink](auto& out) { return out.sink.get() == sink; };
-    return std::find_if(outputs_.begin(), outputs_.end(), pred);
-  }
-
-  void update_max_demand() {
-    if (outputs_.empty()) {
-      max_demand_ = 0;
-    } else {
-      auto i = outputs_.begin();
-      auto e = outputs_.end();
-      auto init = (*i++).demand;
-      auto f = [](size_t x, auto& out) { return std::min(x, out.demand); };
-      max_demand_ = std::accumulate(i, e, init, f);
-    }
-  }
-
-  bool done_ = false;
-  error abort_reason_;
-  size_t max_demand_ = 0;
-  std::vector<input_t> inputs_;
-  std::vector<output_t> outputs_;
-  subscription_ptr sub_;
-};
-
-/// Base type for processors with a buffer that broadcasts output to all
-/// subscribers.
-template <class In, class Out>
-class buffered_processor : public processor<In, Out> {
-public:
-  using super = processor<In, Out>;
-
-  struct output_t {
-    size_t demand;
-    subscriber_ptr<Out> sink;
-  };
-
-  explicit buffered_processor(coordinator* ctx) : super(ctx) {
-    buf_.reserve(defaults::flow::buffer_size);
-  }
-
-  void on_complete() override {
-    sub_ = nullptr;
-    shutdown();
-  }
-
-  void on_error(const error& what) override {
-    done_ = true;
-    sub_ = nullptr;
-    for (auto& out : outputs_)
-      out.sink->on_error(what);
-    buf_.clear();
-    outputs_.clear();
-  }
-
-  void on_subscribe(subscription_ptr sub) override {
-    if (!sub_) {
-      sub_ = std::move(sub);
-      sub_->request(defaults::flow::buffer_size);
-    } else {
-      sub->cancel();
-    }
+  buffered_publisher(coordinator* ctx, size_t desired_capacity)
+    : super(ctx), desired_capacity_(desired_capacity) {
+    buf_.reserve(desired_capacity);
   }
 
   void on_request(subscriber_base* sink, size_t n) override {
@@ -303,8 +124,8 @@ public:
     }
   }
 
-  void subscribe(subscriber_ptr<Out> sink) override {
-    if (done_) {
+  void subscribe(subscriber_ptr<T> sink) override {
+    if (done()) {
       sink->on_complete();
     } else {
       max_demand_ = 0;
@@ -313,16 +134,12 @@ public:
     }
   }
 
-  bool done() const noexcept {
-    return done_;
+  virtual bool done() const noexcept {
+    return completed_ && buf_.empty();
   }
 
   void dispose() override {
-    done_ = true;
-    if (sub_) {
-      sub_->cancel();
-      sub_ = nullptr;
-    }
+    completed_ = true;
     buf_.clear();
     for (auto& out : outputs_)
       out.sink->on_complete();
@@ -330,7 +147,7 @@ public:
   }
 
   bool disposed() const noexcept override {
-    return done_ && outputs_.empty();
+    return done() && outputs_.empty();
   }
 
 protected:
@@ -339,38 +156,58 @@ protected:
     buf_.insert(buf_.end(), first, last);
   }
 
-  // Stops reading from the source, but allows subscribers to still consume
-  // buffered data.
-  void shutdown() {
-    done_ = true;
-    if (sub_) {
-      sub_->cancel();
-      sub_ = nullptr;
-    }
-    if (buf_.empty()) {
+  template <class Val>
+  void append_to_buf(Val&& val) {
+    buf_.emplace_back(std::forward<Val>(val));
+  }
+
+  // Stops the source, but allows subscribers to still consume buffered data.
+  virtual void shutdown() {
+    completed_ = true;
+    if (done()) {
       for (auto& out : outputs_)
         out.sink->on_complete();
       outputs_.clear();
     }
   }
 
-  void try_push() {
-    if (auto n = std::min(max_demand_, buf_.size()); n > 0) {
-      auto items = span<const Out>{buf_.data(), n};
+  virtual void abort(const error& reason) {
+    completed_ = true;
+    for (auto& out : outputs_)
+      out.sink->on_error(reason);
+    outputs_.clear();
+  }
+
+  virtual void pull(size_t) {
+    // Customization point.
+  }
+
+  /// Tries to push data from the buffer downstream.
+  /// @returns The number of successfully pushed items or 0 if the publisher is
+  ///          already shutting down.
+  size_t try_push() {
+    size_t result = 0;
+    while (max_demand_ > 0) {
+      if (desired_capacity_ > buf_.size())
+        pull(desired_capacity_ - buf_.size());
+      auto n = std::min(max_demand_, buf_.size());
+      if (n == 0)
+        return result;
+      auto items = span<const T>{buf_.data(), n};
       for (auto& out : outputs_) {
         out.demand -= n;
         out.sink->on_next(items);
       }
       max_demand_ -= n;
       buf_.erase(buf_.begin(), buf_.begin() + n);
-      if (sub_)
-        sub_->request(n);
-      if (done_ && buf_.empty()) {
+      if (done()) {
         for (auto& out : outputs_)
           out.sink->on_complete();
         outputs_.clear();
+        return result;
       }
     }
+    return result;
   }
 
   auto find(subscriber_base* sink) {
@@ -390,11 +227,160 @@ protected:
     }
   }
 
-  std::vector<Out> buf_;
-  bool done_ = false;
-  error abort_reason_;
+  size_t desired_capacity_;
+  std::vector<T> buf_;
+  bool completed_ = false;
   size_t max_demand_ = 0;
   std::vector<output_t> outputs_;
+};
+
+/// Broadcasts its input to all subscribers without modifying it.
+template <class T>
+class broadcaster : public buffered_publisher<T>, public subscriber<T> {
+public:
+  using super = buffered_publisher<T>;
+
+  struct input_t {
+    size_t offset;
+    batch buf;
+  };
+
+  explicit broadcaster(coordinator* ctx)
+    : super(ctx, defaults::flow::batch_size) {
+    // nop
+  }
+
+  void on_complete() override {
+    sub_ = nullptr;
+    this->shutdown();
+  }
+
+  void on_error(const error& what) override {
+    sub_ = nullptr;
+    inputs_.clear();
+    this->abort(what);
+  }
+
+  void on_next(span<const T> items) override {
+    inputs_.emplace_back(input_t{0, make_batch(items)});
+  }
+
+  void on_batch(const batch& buf) override {
+    inputs_.emplace_back(input_t{0, buf});
+  }
+
+  void on_subscribe(subscription_ptr sub) override {
+    if (!sub_) {
+      sub_ = std::move(sub);
+      sub_->request(defaults::flow::buffer_size);
+    } else {
+      sub->cancel();
+    }
+  }
+
+  bool done() const noexcept override {
+    return inputs_.empty() && super::done();
+  }
+
+  void dispose() override {
+    if (sub_) {
+      sub_->cancel();
+      sub_ = nullptr;
+    }
+    inputs_.clear();
+    super::dispose();
+  }
+
+  bool disposed() const noexcept override {
+    return super::disposed() && inputs_.empty();
+  }
+
+private:
+  void pull(size_t n) override {
+    size_t pulled = 0;
+    while (n > 0 && !inputs_.empty()) {
+      auto& input = inputs_[0];
+      auto m = std::min(input.buf.size() - input.offset, n);
+      CAF_ASSERT(m > 0);
+      auto items = input.buf.template items<T>().subspan(m);
+      this->append_to_buf(items.begin(), items.end());
+      if (m + input.offset == input.buf.size())
+        inputs_.erase(inputs_.begin());
+      n -= m;
+      pulled += m;
+    }
+    if (sub_)
+      sub_->request(pulled);
+  }
+
+  error abort_reason_;
+  std::vector<input_t> inputs_;
+  subscription_ptr sub_;
+};
+
+/// Base type for processors with a buffer that broadcasts output to all
+/// subscribers.
+template <class In, class Out>
+class buffered_processor : public buffered_publisher<Out>,
+                           public subscriber<In> {
+public:
+  using super = buffered_publisher<Out>;
+
+  explicit buffered_processor(coordinator* ctx)
+    : super(ctx, defaults::flow::buffer_size) {
+    // nop
+  }
+
+  void on_complete() override {
+    sub_ = nullptr;
+    shutdown();
+  }
+
+  void on_error(const error& what) override {
+    sub_ = nullptr;
+    this->abort(what);
+  }
+
+  void on_subscribe(subscription_ptr sub) override {
+    if (!sub_) {
+      sub_ = std::move(sub);
+      in_flight_ = super::desired_capacity_;
+      sub_->request(in_flight_);
+    } else {
+      sub->cancel();
+    }
+  }
+
+  void dispose() override {
+    if (sub_) {
+      sub_->cancel();
+      sub_ = nullptr;
+    }
+    super::dispose();
+  }
+
+protected:
+  void pull(size_t n) override {
+    CAF_ASSERT(n > 0);
+    if (sub_ && super::desired_capacity_ > in_flight_) {
+      auto m = std::min(n, super::desired_capacity_ - in_flight_);
+      in_flight_ += m;
+      sub_->request(m);
+    }
+  }
+
+  // Stops reading from the source, but allows subscribers to still consume
+  // buffered data.
+  void shutdown() override {
+    super::shutdown();
+    if (sub_) {
+      sub_->cancel();
+      sub_ = nullptr;
+    }
+  }
+
+  size_t in_flight_ = 0;
+  error abort_reason_;
   subscription_ptr sub_;
 };
 
@@ -414,12 +400,12 @@ public:
     if (remaining_ > items.size()) {
       super::append_to_buf(items.begin(), items.end());
       remaining_ -= items.size();
-      super::try_push();
+      this->try_push();
     } else {
       super::append_to_buf(items.begin(), items.begin() + remaining_);
       remaining_ = 0;
-      super::try_push();
-      super::shutdown();
+      this->try_push();
+      this->shutdown();
     }
   }
 

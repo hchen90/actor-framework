@@ -24,7 +24,7 @@ namespace caf::flow::async {
 template <class T>
 class publisher : public virtual ref_counted {
 public:
-  using observed_type = T;
+  using item_type = T;
 
   /// Adds a new sink to the stream. The publisher calls member functions on the
   /// sink asynchronously.
