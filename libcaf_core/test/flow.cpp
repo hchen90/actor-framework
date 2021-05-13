@@ -86,6 +86,37 @@ struct nondeterministic_fixture {
 
 BEGIN_FIXTURE_SCOPE(fixture)
 
+SCENARIO("users can feed ranges into streams") {
+  GIVEN("a range adapter") {
+    WHEN("subscribing to its output asynchronously") {
+      THEN("the subscriber receives all values from the range") {
+        auto values = std::vector<int>{1, 2, 4, 8, 16, 32, 64, 128};
+        auto consumer = make_counted<buffered_subscriber>();
+        flow::async::from(sys, [vals{values}](auto* self) mutable {
+          return self->make_publisher()->iterate(std::move(vals));
+        })->async_subscribe(consumer);
+        run();
+        CHECK_EQ(consumer->completed(), true);
+        CHECK_EQ(consumer->buf, values);
+      }
+    }
+    WHEN("subscribing to its output on another actor") {
+      THEN("the subscriber receives all values from the range") {
+        auto values = std::vector<int>{1, 2, 4, 8, 16, 32, 64, 128};
+        auto consumer = make_counted<buffered_subscriber>();
+        flow::async::from(sys, [vals{values}](auto* self) mutable {
+          return self->make_publisher()->iterate(std::move(vals));
+        })->subscribe_with(sys, [consumer](auto*, auto&& in) {
+          in->subscribe(consumer);
+        });
+        run();
+        CHECK_EQ(consumer->completed(), true);
+        CHECK_EQ(consumer->buf, values);
+      }
+    }
+  }
+}
+
 SCENARIO("repeaters generate a sequence of identical values") {
   GIVEN("a repeater") {
     WHEN("subscribing to its output") {
@@ -93,7 +124,7 @@ SCENARIO("repeaters generate a sequence of identical values") {
         auto consumer = make_counted<buffered_subscriber>(128);
         flow::async::from(sys, [](auto* self) {
           return self->make_publisher()->repeat(42);
-        })->subscribe(consumer);
+        })->async_subscribe(consumer);
         run();
         CHECK_EQ(consumer->completed(), false);
         CHECK_EQ(consumer->buf.size(), 128u);
@@ -111,7 +142,7 @@ SCENARIO("take operators cut off streams") {
         auto consumer = make_counted<buffered_subscriber>();
         flow::async::from(sys, [](auto* self) {
           return self->make_publisher()->repeat(42)->take(17);
-        })->subscribe(consumer);
+        })->async_subscribe(consumer);
         run();
         CHECK_EQ(consumer->completed(), true);
         CHECK_EQ(consumer->buf.size(), 17u);
@@ -131,7 +162,7 @@ SCENARIO("merge operators combine inputs") {
           auto r1 = self->make_publisher()->repeat(11)->take(113);
           auto r2 = self->make_publisher()->repeat(22)->take(223);
           return flow::merge(r1, r2);
-        })->subscribe(consumer);
+        })->async_subscribe(consumer);
         run();
         CHECK_EQ(consumer->completed(), true);
         auto& buf = consumer->buf;
@@ -142,6 +173,47 @@ SCENARIO("merge operators combine inputs") {
           CHECK(std::all_of(buf.begin() + 113, buf.end(),
                             [](int x) { return x == 22; }));
         }
+      }
+    }
+  }
+}
+
+SCENARIO("broadcasters simply copy their inputs to all subscribers") {
+  GIVEN("a repeater and a broadcaster") {
+    WHEN("subscribing to the broadcaster asynchronously") {
+      THEN("the subscriber receives the output of the repeater") {
+        auto consumer = make_counted<buffered_subscriber>();
+        flow::async::from(sys, [](auto* self) {
+          return self->make_publisher()
+            ->repeat(42)
+            ->take(128)
+            ->template subscribe_with_new<flow::broadcaster<int>>(self);
+        })->async_subscribe(consumer);
+        run();
+        CHECK_EQ(consumer->completed(), true);
+        auto& buf = consumer->buf;
+        auto is_42 = [](int x) { return x == 42; };
+        CHECK_EQ(buf.size(), 128u);
+        CHECK(std::all_of(buf.begin(), buf.end(), is_42));
+      }
+    }
+    WHEN("subscribing to the broadcaster on another actor") {
+      THEN("the subscriber receives the output of the repeater") {
+        auto consumer = make_counted<buffered_subscriber>();
+        flow::async::from(sys, [](auto* self) {
+          return self->make_publisher()
+            ->repeat(42)
+            ->take(128)
+            ->template subscribe_with_new<flow::broadcaster<int>>(self);
+        })->subscribe_with(sys, [consumer](auto*, auto&& in) {
+          in->subscribe(consumer);
+        });
+        run();
+        CHECK_EQ(consumer->completed(), true);
+        auto& buf = consumer->buf;
+        auto is_42 = [](int x) { return x == 42; };
+        CHECK_EQ(buf.size(), 128u);
+        CHECK(std::all_of(buf.begin(), buf.end(), is_42));
       }
     }
   }

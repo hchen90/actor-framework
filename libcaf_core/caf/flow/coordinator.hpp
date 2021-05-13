@@ -80,7 +80,8 @@ private:
 ///          Otherwise, returns a tuple with the handle as first value and
 ///          lifted returns values of `init` for the other values.
 /// @relates coordinator
-template <class Impl, class Context, class Fn, class... Ts>
+template <class Impl = caf::event_based_actor, class Context, class Fn,
+          class... Ts>
 auto spawn(Context& ctx, Fn init, Ts&&... ctor_args) {
   auto [ptr, launch]
     = ctx.template make_flow_coordinator<Impl>(std::forward<Ts>(ctor_args)...);

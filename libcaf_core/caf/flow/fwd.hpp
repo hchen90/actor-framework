@@ -8,14 +8,6 @@
 
 namespace caf::flow {
 
-template <class>
-struct has_impl_include {
-  static constexpr bool value = false;
-};
-
-template <class T>
-constexpr bool has_impl_include_v = has_impl_include<T>::value;
-
 class batch;
 
 class publisher_factory;
@@ -63,3 +55,37 @@ template <class T>
 using publisher_ptr = intrusive_ptr<publisher<T>>;
 
 } // namespace caf::flow::async
+
+namespace caf::flow {
+
+template <class T>
+struct subscribed_type_oracle {
+  using type = typename T::subscribed_type;
+};
+
+template <class T>
+struct subscribed_type_oracle<intrusive_ptr<T>> : subscribed_type_oracle<T> {};
+
+template <class T>
+using subscribed_type_t = typename subscribed_type_oracle<T>::type;
+
+template <class T>
+struct published_type_oracle {
+  using type = typename T::published_type;
+};
+
+template <class T>
+struct published_type_oracle<intrusive_ptr<T>> : published_type_oracle<T> {};
+
+template <class T>
+using published_type_t = typename published_type_oracle<T>::type;
+
+template <class>
+struct has_impl_include {
+  static constexpr bool value = false;
+};
+
+template <class T>
+constexpr bool has_impl_include_v = has_impl_include<T>::value;
+
+} // namespace caf::flow

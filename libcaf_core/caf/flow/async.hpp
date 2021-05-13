@@ -24,14 +24,15 @@ namespace caf::flow::async {
 template <class T>
 class publisher : public virtual ref_counted {
 public:
-  using item_type = T;
+  using published_type = T;
 
   /// Adds a new sink to the stream. The publisher calls member functions on the
   /// sink asynchronously.
-  virtual void subscribe(subscriber_ptr<T> sink) = 0;
+  virtual void async_subscribe(subscriber_ptr<T> sink) = 0;
 
-  /// Subscribes a new coordinator to this publisher and optionally returns the
-  /// lifted publisher created by the coordinator.
+  /// Creates a new coordinator, then observes this asynchronous publisher
+  /// locally and optionally returns a new (lifted) publisher created by the
+  /// coordinator.
   template <class Impl = event_based_actor, class Context, class Fn,
             class... Ts>
   auto subscribe_with(Context& ctx, Fn init, Ts&&... ctor_args) {
@@ -43,7 +44,8 @@ public:
       init(ptr, ptr->observe(std::move(pub)));
       launch();
     } else {
-      auto res = ptr->lift(init(ptr, ptr->observe(std::move(pub))));
+      auto init_res = init(ptr, ptr->observe(std::move(pub)));
+      auto res = ptr->lift(init_res->as_publisher());
       launch();
       return res;
     }
@@ -57,7 +59,7 @@ public:
     static_assert(std::is_same_v<res_t, void>,
                   "OnNext handlers must have signature 'void(T)'");
     auto sub = make_counted<blocking_subscriber<T>>();
-    subscribe(sub);
+    async_subscribe(sub);
     sub->run(std::move(fun), std::move(err), std::move(fin));
   }
 
@@ -80,7 +82,7 @@ public:
     static_assert(std::is_same_v<res_t, bool>,
                   "OnNext handlers must have signature 'bool(T)'");
     auto sub = make_counted<blocking_subscriber<T>>();
-    subscribe(sub);
+    async_subscribe(sub);
     sub->run(std::move(fun), std::move(err), std::move(fin));
   }
 

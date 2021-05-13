@@ -22,10 +22,16 @@ namespace caf::flow {
 template <class T>
 class subscriber : public subscriber_base {
 public:
-  using value_type = T;
+  using subscribed_type = T;
+
   virtual void on_next(span<const T> items) = 0;
+
   void on_batch(const batch& buf) override {
     on_next(buf.template items<T>());
+  }
+
+  subscriber_ptr<T> as_subscriber() noexcept {
+    return {this};
   }
 };
 

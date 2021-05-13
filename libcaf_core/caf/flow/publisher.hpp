@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <numeric>
+#include <type_traits>
 #include <vector>
 
 #include "caf/defaults.hpp"
@@ -23,15 +24,6 @@
 
 namespace caf::flow {
 
-template <class T>
-struct item_type_oracle;
-
-template <class T>
-struct item_type_oracle<intrusive_ptr<T>> : item_type_oracle<T> {};
-
-template <class T>
-using item_type_t = typename item_type_oracle<T>::type;
-
 /// An item source that is only visible in the scope of a @ref coordinator. May
 /// the lifted to an @ref async::publisher by the coordinator in order to make
 /// the items visible to other parts of the system.
@@ -42,7 +34,7 @@ class publisher : public publisher_base, public disposable {
 public:
   using super = publisher_base;
 
-  using item_type = T;
+  using published_type = T;
 
   explicit publisher(coordinator* ctx) : super(ctx) {
     // nop
@@ -56,21 +48,36 @@ public:
   }
 
   template <class OnNext, class OnError>
-  void subscribe(OnNext fn, OnError fail) {
+  std::enable_if_t<std::is_invocable_v<OnNext, T>>
+  subscribe(OnNext fn, OnError fail) {
     subscribe(make_subscriber(std::move(fn), std::move(fail)));
   }
 
   template <class OnNext, class OnError, class OnComplete>
-  void subscribe(OnNext fn, OnError fail, OnComplete fin) {
+  std::enable_if_t<std::is_invocable_v<OnNext, T>>
+  subscribe(OnNext fn, OnError fail, OnComplete fin) {
     subscribe(make_subscriber(std::move(fn), std::move(fail), std::move(fin)));
   }
 
-  publisher_ptr<T> take(size_t n);
-};
+  publisher_ptr<T> as_publisher() noexcept {
+    return {this};
+  }
 
-template <class T>
-struct item_type_oracle<publisher<T>> {
-  using type = T;
+  publisher_ptr<T> take(size_t n);
+
+  /// Subscribes `stage` to this publisher and returns it as is.
+  template <class Impl>
+  auto subscribe_with(intrusive_ptr<Impl> what) {
+    subscribe(what->as_subscriber());
+    return what;
+  }
+
+  /// Convenience function for calling
+  /// `subscribe_with(make_counted<Impl>(ctor_args...))`.
+  template <class Impl, class... Ts>
+  auto subscribe_with_new(Ts&&... ctor_args) {
+    return subscribe_with(make_counted<Impl>(std::forward<Ts>(ctor_args)...));
+  }
 };
 
 /// @relates publisher
@@ -99,9 +106,14 @@ public:
     subscriber_ptr<T> sink;
   };
 
+  explicit buffered_publisher(coordinator* ctx)
+    : super(ctx), desired_capacity_(defaults::flow::buffer_size) {
+    buf_.reserve(desired_capacity_);
+  }
+
   buffered_publisher(coordinator* ctx, size_t desired_capacity)
     : super(ctx), desired_capacity_(desired_capacity) {
-    buf_.reserve(desired_capacity);
+    buf_.reserve(desired_capacity_);
   }
 
   void on_request(subscriber_base* sink, size_t n) override {
@@ -123,6 +135,8 @@ public:
       }
     }
   }
+
+  using super::subscribe;
 
   void subscribe(subscriber_ptr<T> sink) override {
     if (done()) {
@@ -234,90 +248,6 @@ protected:
   std::vector<output_t> outputs_;
 };
 
-/// Broadcasts its input to all subscribers without modifying it.
-template <class T>
-class broadcaster : public buffered_publisher<T>, public subscriber<T> {
-public:
-  using super = buffered_publisher<T>;
-
-  struct input_t {
-    size_t offset;
-    batch buf;
-  };
-
-  explicit broadcaster(coordinator* ctx)
-    : super(ctx, defaults::flow::batch_size) {
-    // nop
-  }
-
-  void on_complete() override {
-    sub_ = nullptr;
-    this->shutdown();
-  }
-
-  void on_error(const error& what) override {
-    sub_ = nullptr;
-    inputs_.clear();
-    this->abort(what);
-  }
-
-  void on_next(span<const T> items) override {
-    inputs_.emplace_back(input_t{0, make_batch(items)});
-  }
-
-  void on_batch(const batch& buf) override {
-    inputs_.emplace_back(input_t{0, buf});
-  }
-
-  void on_subscribe(subscription_ptr sub) override {
-    if (!sub_) {
-      sub_ = std::move(sub);
-      sub_->request(defaults::flow::buffer_size);
-    } else {
-      sub->cancel();
-    }
-  }
-
-  bool done() const noexcept override {
-    return inputs_.empty() && super::done();
-  }
-
-  void dispose() override {
-    if (sub_) {
-      sub_->cancel();
-      sub_ = nullptr;
-    }
-    inputs_.clear();
-    super::dispose();
-  }
-
-  bool disposed() const noexcept override {
-    return super::disposed() && inputs_.empty();
-  }
-
-private:
-  void pull(size_t n) override {
-    size_t pulled = 0;
-    while (n > 0 && !inputs_.empty()) {
-      auto& input = inputs_[0];
-      auto m = std::min(input.buf.size() - input.offset, n);
-      CAF_ASSERT(m > 0);
-      auto items = input.buf.template items<T>().subspan(m);
-      this->append_to_buf(items.begin(), items.end());
-      if (m + input.offset == input.buf.size())
-        inputs_.erase(inputs_.begin());
-      n -= m;
-      pulled += m;
-    }
-    if (sub_)
-      sub_->request(pulled);
-  }
-
-  error abort_reason_;
-  std::vector<input_t> inputs_;
-  subscription_ptr sub_;
-};
-
 /// Base type for processors with a buffer that broadcasts output to all
 /// subscribers.
 template <class In, class Out>
@@ -364,6 +294,7 @@ protected:
     CAF_ASSERT(n > 0);
     if (sub_ && super::desired_capacity_ > in_flight_) {
       auto m = std::min(n, super::desired_capacity_ - in_flight_);
+      CAF_ASSERT(m > 0);
       in_flight_ += m;
       sub_->request(m);
     }
@@ -382,6 +313,20 @@ protected:
   size_t in_flight_ = 0;
   error abort_reason_;
   subscription_ptr sub_;
+};
+
+/// Broadcasts its input to all subscribers without modifying it.
+template <class T>
+class broadcaster : public buffered_processor<T, T> {
+public:
+  using super = buffered_processor<T, T>;
+
+  using super::super;
+
+  void on_next(span<const T> items) override {
+    this->append_to_buf(items.begin(), items.end());
+    this->try_push();
+  }
 };
 
 // -- publisher::take ----------------------------------------------

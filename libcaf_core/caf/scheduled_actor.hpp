@@ -500,10 +500,12 @@ public:
   /// Makes items from `source` visible outside of this actor.
   /// @note Include `caf/scheduled_actor/flow.hpp` for this member function.
   template <class T>
-  flow::async::publisher_ptr<T> lift(flow::publisher_ptr<T> source) {
+  auto lift(intrusive_ptr<T> source)
+    -> flow::async::publisher_ptr<typename T::published_type> {
+    using value_type = typename T::published_type;
     static_assert(flow::has_impl_include_v<detail::left_t<scheduled_actor, T>>,
                   "include 'caf/scheduled_actor/flow.hpp' for this method");
-    return lift_impl(std::move(source));
+    return lift_impl(flow::publisher_ptr<value_type>{std::move(source)});
   }
 
   // -- inbound_path management ------------------------------------------------

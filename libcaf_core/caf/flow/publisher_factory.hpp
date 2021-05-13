@@ -20,6 +20,10 @@ public:
   template <class T>
   [[nodiscard]] publisher_ptr<T> repeat(T value) const;
 
+  template <class Range>
+  [[nodiscard]] publisher_ptr<typename Range::value_type>
+  iterate(Range values) const;
+
 private:
   explicit publisher_factory(coordinator* ctx) : ctx_(ctx) {
     // nop
@@ -102,6 +106,40 @@ private:
 template <class T>
 publisher_ptr<T> publisher_factory::repeat(T value) const {
   return make_counted<repeater<T>>(ctx_, std::move(value));
+}
+
+// -- publisher_factory::iterate -----------------------------------------------
+
+template <class Range>
+class range_adapter : public buffered_publisher<typename Range::value_type> {
+public:
+  using super = buffered_publisher<typename Range::value_type>;
+
+  using const_iterator = typename Range::const_iterator;
+
+  range_adapter(coordinator* ctx, Range values)
+    : super(ctx), range_(std::move(values)), pos_(range_.begin()) {
+    // nop
+  }
+
+private:
+  virtual void pull(size_t n) {
+    while (pos_ != range_.end() && n > 0) {
+      this->append_to_buf(*pos_++);
+      --n;
+    }
+    if (pos_ == range_.end())
+      this->shutdown();
+  }
+
+  Range range_;
+  const_iterator pos_;
+};
+
+template <class Range>
+publisher_ptr<typename Range::value_type>
+publisher_factory::iterate(Range values) const {
+  return make_counted<range_adapter<Range>>(ctx_, std::move(values));
 }
 
 } // namespace caf::flow

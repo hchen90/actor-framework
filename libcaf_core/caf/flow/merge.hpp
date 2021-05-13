@@ -142,7 +142,7 @@ private:
 /// stream of items.
 template <class T, class... Publishers>
 publisher_ptr<T> merge(publisher_ptr<T> pub, Publishers... pubs) {
-  static_assert((std::is_same_v<T, item_type_t<Publishers>> && ...));
+  static_assert((std::is_same_v<T, published_type_t<Publishers>> && ...));
   auto ptr = make_counted<merger<T>>(pub->ctx());
   ptr->add(std::move(pub));
   ptr->add(std::move(pubs)...);

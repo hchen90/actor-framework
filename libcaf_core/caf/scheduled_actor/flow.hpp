@@ -116,7 +116,7 @@ public:
     // nop
   }
 
-  void subscribe(flow::subscriber_ptr<T> sink) override {
+  void async_subscribe(flow::subscriber_ptr<T> sink) override {
     auto fwd = make_counted<forwarder_impl>(hdl_, std::move(sink));
     anon_send(hdl_, unsafe_flow_msg{src_, flow::subscriber_ptr<T>{fwd}});
   }
@@ -184,7 +184,7 @@ scheduled_actor::observe_impl(flow::async::publisher_ptr<T> source) {
   watch(local.get());
   auto hdl = actor_cast<actor>(this);
   auto fwd = make_counted<detail::item_forwarder<T>>(std::move(hdl), local);
-  source->subscribe(flow::subscriber_ptr<T>{std::move(fwd)});
+  source->async_subscribe(flow::subscriber_ptr<T>{std::move(fwd)});
   return local;
 }
 
