@@ -48,11 +48,21 @@ using publisher_ptr = intrusive_ptr<publisher<T>>;
 
 namespace caf::flow::async {
 
+class notifiable;
+
+using notifiable_ptr = intrusive_ptr<notifiable>;
+
 template <class T>
 class publisher;
 
 template <class T>
 using publisher_ptr = intrusive_ptr<publisher<T>>;
+
+template <class T>
+class publishing_queue;
+
+template <class T>
+using publishing_queue_ptr = intrusive_ptr<publishing_queue<T>>;
 
 } // namespace caf::flow::async
 

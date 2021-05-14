@@ -71,4 +71,24 @@ std::string to_string(const unsafe_flow_msg& msg) {
   return result;
 }
 
+void unsafe_flow_msg::on_notify::render(std::string& str) const {
+  str += "on_notify(ptr: ";
+  print(str, reinterpret_cast<intptr_t>(ptr.get()));
+  str += ')';
+}
+
+void unsafe_flow_msg::on_close::render(std::string& str) const {
+  str += "on_close(ptr: ";
+  print(str, reinterpret_cast<intptr_t>(ptr.get()));
+  str += ')';
+}
+
+void unsafe_flow_msg::on_abort::render(std::string& str) const {
+  str += "on_abort(ptr: ";
+  print(str, reinterpret_cast<intptr_t>(ptr.get()));
+  str += ", reason: ";
+  str += to_string(reason);
+  str += ')';
+}
+
 } // namespace caf::detail

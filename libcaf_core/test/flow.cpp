@@ -6,7 +6,8 @@
 
 #include "caf/test/bdd_dsl.hpp"
 
-#include "caf/flow/async.hpp"
+#include "caf/flow/async/publisher.hpp"
+#include "caf/flow/async/publishing_queue.hpp"
 #include "caf/flow/batch.hpp"
 #include "caf/flow/coordinator.hpp"
 #include "caf/flow/merge.hpp"
@@ -92,7 +93,7 @@ SCENARIO("users can feed ranges into streams") {
       THEN("the subscriber receives all values from the range") {
         auto values = std::vector<int>{1, 2, 4, 8, 16, 32, 64, 128};
         auto consumer = make_counted<buffered_subscriber>();
-        flow::async::from(sys, [vals{values}](auto* self) mutable {
+        flow::async::publisher_from(sys, [vals{values}](auto* self) mutable {
           return self->make_publisher()->iterate(std::move(vals));
         })->async_subscribe(consumer);
         run();
@@ -104,7 +105,7 @@ SCENARIO("users can feed ranges into streams") {
       THEN("the subscriber receives all values from the range") {
         auto values = std::vector<int>{1, 2, 4, 8, 16, 32, 64, 128};
         auto consumer = make_counted<buffered_subscriber>();
-        flow::async::from(sys, [vals{values}](auto* self) mutable {
+        flow::async::publisher_from(sys, [vals{values}](auto* self) mutable {
           return self->make_publisher()->iterate(std::move(vals));
         })->subscribe_with(sys, [consumer](auto*, auto&& in) {
           in->subscribe(consumer);
@@ -122,7 +123,7 @@ SCENARIO("repeaters generate a sequence of identical values") {
     WHEN("subscribing to its output") {
       THEN("the subscriber receives the same value ad infinitum") {
         auto consumer = make_counted<buffered_subscriber>(128);
-        flow::async::from(sys, [](auto* self) {
+        flow::async::publisher_from(sys, [](auto* self) {
           return self->make_publisher()->repeat(42);
         })->async_subscribe(consumer);
         run();
@@ -140,7 +141,7 @@ SCENARIO("take operators cut off streams") {
     WHEN("subscribing to the output") {
       THEN("the subscriber receives a fixed number of values") {
         auto consumer = make_counted<buffered_subscriber>();
-        flow::async::from(sys, [](auto* self) {
+        flow::async::publisher_from(sys, [](auto* self) {
           return self->make_publisher()->repeat(42)->take(17);
         })->async_subscribe(consumer);
         run();
@@ -158,7 +159,7 @@ SCENARIO("merge operators combine inputs") {
     WHEN("merging them to a single publisher") {
       THEN("the subscriber receives the output of both sources") {
         auto consumer = make_counted<buffered_subscriber>();
-        flow::async::from(sys, [](auto* self) {
+        flow::async::publisher_from(sys, [](auto* self) {
           auto r1 = self->make_publisher()->repeat(11)->take(113);
           auto r2 = self->make_publisher()->repeat(22)->take(223);
           return flow::merge(r1, r2);
@@ -183,7 +184,7 @@ SCENARIO("broadcasters simply copy their inputs to all subscribers") {
     WHEN("subscribing to the broadcaster asynchronously") {
       THEN("the subscriber receives the output of the repeater") {
         auto consumer = make_counted<buffered_subscriber>();
-        flow::async::from(sys, [](auto* self) {
+        flow::async::publisher_from(sys, [](auto* self) {
           return self->make_publisher()
             ->repeat(42)
             ->take(128)
@@ -200,7 +201,7 @@ SCENARIO("broadcasters simply copy their inputs to all subscribers") {
     WHEN("subscribing to the broadcaster on another actor") {
       THEN("the subscriber receives the output of the repeater") {
         auto consumer = make_counted<buffered_subscriber>();
-        flow::async::from(sys, [](auto* self) {
+        flow::async::publisher_from(sys, [](auto* self) {
           return self->make_publisher()
             ->repeat(42)
             ->take(128)
@@ -225,7 +226,7 @@ BEGIN_FIXTURE_SCOPE(nondeterministic_fixture)
 
 SCENARIO("async::publisher::for_each receives values in the current thread") {
   GIVEN("a repeater with no limit running on an actor") {
-    auto source = flow::async::from(sys, [](auto* self) {
+    auto source = flow::async::publisher_from(sys, [](auto* self) {
       return self->make_publisher()->repeat(42);
     });
     WHEN("subscribing to its output via for_each_while") {
@@ -248,7 +249,7 @@ SCENARIO("async::publisher::for_each receives values in the current thread") {
     }
   }
   GIVEN("a repeater generating 512 values running on an actor") {
-    auto source = flow::async::from(sys, [](auto* self) {
+    auto source = flow::async::publisher_from(sys, [](auto* self) {
       return self->make_publisher()->repeat(42)->take(512);
     });
     WHEN("subscribing to its output via for_each") {
@@ -267,6 +268,30 @@ SCENARIO("async::publisher::for_each receives values in the current thread") {
           [] { MESSAGE("OnComplete called"); });
         CHECK_EQ(n, 512);
         CHECK_EQ(n * 42, sum);
+      }
+    }
+  }
+}
+
+SCENARIO("publishing queues connect asynchronous producers to subscribers") {
+  GIVEN("a producer and a consumer, living in separate threads") {
+    WHEN("connecting producer and consumer via a publishing queue") {
+      THEN("the consumer receives all produced values in order") {
+        auto [queue, src] = flow::async::make_publishing_queue<int>(sys, 100);
+        auto producer_thread = std::thread{[q{std::move(queue)}] {
+          for (int i = 0; i < 5000; ++i)
+            q->push(i);
+        }};
+        std::vector<int> values;
+        auto consumer_thread = std::thread{[&values, src{src}] {
+          src->for_each([&](int x) { values.emplace_back(x); });
+        }};
+        producer_thread.join();
+        consumer_thread.join();
+        std::vector<int> expected_values;
+        expected_values.resize(5000);
+        std::iota(expected_values.begin(), expected_values.end(), 0);
+        CHECK_EQ(values, expected_values);
       }
     }
   }

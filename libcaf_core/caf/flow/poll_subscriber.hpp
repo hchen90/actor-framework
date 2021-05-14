@@ -25,15 +25,21 @@ public:
 
   void on_complete() override {
     std::unique_lock guard{mtx_};
-    sub_ = nullptr;
-    done_ = true;
+    if (!done_) {
+      sub_ = nullptr;
+      done_ = true;
+      wakeup(guard);
+    }
   }
 
   void on_error(const error& what) override {
     std::unique_lock guard{mtx_};
-    sub_ = nullptr;
-    done_ = true;
-    err_ = what;
+    if (!done_) {
+      sub_ = nullptr;
+      done_ = true;
+      err_ = what;
+      wakeup(guard);
+    }
   }
 
   void on_next(span<const T> items) override {

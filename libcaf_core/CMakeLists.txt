@@ -142,6 +142,7 @@ caf_add_component(
     src/event_based_actor.cpp
     src/execution_unit.cpp
     src/exit_reason_strings.cpp
+    src/flow/async/notifiable.cpp
     src/flow/batch.cpp
     src/flow/coordinator.cpp
     src/flow/disposable.cpp

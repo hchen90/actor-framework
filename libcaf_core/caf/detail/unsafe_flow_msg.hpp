@@ -9,6 +9,7 @@
 #include "caf/allowed_unsafe_message_type.hpp"
 #include "caf/detail/core_export.hpp"
 #include "caf/error.hpp"
+#include "caf/flow/async/notifiable.hpp"
 #include "caf/flow/batch.hpp"
 #include "caf/flow/publisher_base.hpp"
 #include "caf/flow/subscriber_base.hpp"
@@ -89,7 +90,8 @@ public:
     void render(std::string& str) const;
   };
 
-  unsafe_flow_msg(flow::subscriber_base_ptr sink, error what)
+  template <class T>
+  unsafe_flow_msg(flow::subscriber_ptr<T> sink, error what)
     : event(on_error{std::move(sink), std::move(what)}) {
     // nop
   }
@@ -136,11 +138,52 @@ public:
     // nop
   }
 
+  struct on_notify {
+    flow::async::notifiable_ptr ptr;
+    void exec() const {
+      ptr->on_notify();
+    }
+    void render(std::string& str) const;
+  };
+
+  unsafe_flow_msg(flow::async::notifiable_ptr ptr)
+    : event(on_notify{std::move(ptr)}) {
+    // nop
+  }
+
+  struct on_close {
+    flow::async::notifiable_ptr ptr;
+    void exec() const {
+      ptr->on_close();
+    }
+    void render(std::string& str) const;
+  };
+
+  unsafe_flow_msg(close_atom, flow::async::notifiable_ptr ptr)
+    : event(on_close{std::move(ptr)}) {
+    // nop
+  }
+
+  struct on_abort {
+    flow::async::notifiable_ptr ptr;
+    error reason;
+    void exec() const {
+      ptr->on_abort(reason);
+    }
+    void render(std::string& str) const;
+  };
+
+  unsafe_flow_msg(flow::async::notifiable_ptr ptr, error reason)
+    : event(on_abort{std::move(ptr), std::move(reason)}) {
+    // nop
+  }
+
   unsafe_flow_msg(const unsafe_flow_msg&) = default;
   unsafe_flow_msg& operator=(const unsafe_flow_msg&) = default;
 
-  using event_type = std::variant<nop, on_batch, on_subscribe, on_complete,
-                                  on_error, subscribe, request, cancel>;
+  using event_type
+    = std::variant<nop, on_batch, on_subscribe, on_complete, on_error,
+                   subscribe, request, cancel, on_notify, on_close, on_abort>;
 
   event_type event;
 

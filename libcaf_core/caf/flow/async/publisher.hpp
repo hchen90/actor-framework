@@ -106,7 +106,7 @@ using publisher_ptr = intrusive_ptr<publisher<T>>;
 /// @ref flow::publisher managed by a new @ref coordinator.
 /// @relates publisher
 template <class Impl = event_based_actor, class Context, class Fn, class... Ts>
-auto from(Context& ctx, Fn init, Ts&&... ctor_args) {
+auto publisher_from(Context& ctx, Fn init, Ts&&... ctor_args) {
   auto [ptr, launch]
     = ctx.template make_flow_coordinator<Impl>(std::forward<Ts>(ctor_args)...);
   using init_res_t = decltype(init(ptr));
