@@ -587,6 +587,65 @@ uint64_t scheduled_actor::set_stream_timeout(actor_clock::time_point x) {
   return set_timeout("stream", x);
 }
 
+// -- caf::flow API ------------------------------------------------------------
+
+} // namespace caf
+
+namespace caf::detail {
+
+class notifiable_proxy : public flow::async::notifiable {
+public:
+  notifiable_proxy(scheduled_actor* self, flow::notifiable_ptr ptr)
+    : hdl_(self->ctrl(), true), ptr_(std::move(ptr)) {
+    // nop
+  }
+
+  ~notifiable_proxy() {
+    if (hdl_)
+      hdl_->eq_impl(make_message_id(), nullptr, nullptr,
+                    unsafe_flow_msg{close_atom_v, ptr_});
+  }
+
+  void on_notify() override {
+    if (hdl_)
+      hdl_->eq_impl(make_message_id(), nullptr, nullptr, unsafe_flow_msg{ptr_});
+  }
+
+  void on_close() override {
+    if (hdl_) {
+      hdl_->eq_impl(make_message_id(), nullptr, nullptr,
+                    unsafe_flow_msg{close_atom_v, ptr_});
+      reset();
+    }
+  }
+
+  void on_abort(const error& reason) override {
+    if (hdl_) {
+      hdl_->eq_impl(make_message_id(), nullptr, nullptr,
+                    unsafe_flow_msg{ptr_, reason});
+      reset();
+    }
+  }
+
+  void reset() {
+    hdl_ = nullptr;
+    ptr_ = nullptr;
+  }
+
+private:
+  actor hdl_;
+  flow::notifiable_ptr ptr_;
+};
+
+} // namespace caf::detail
+
+namespace caf {
+
+flow::async::notifiable_ptr
+scheduled_actor::to_async_notifiable(flow::notifiable_ptr ptr) {
+  return make_counted<detail::notifiable_proxy>(this, std::move(ptr));
+}
+
 // -- message processing -------------------------------------------------------
 
 void scheduled_actor::add_awaited_response_handler(message_id response_id,

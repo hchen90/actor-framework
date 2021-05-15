@@ -8,6 +8,10 @@
 
 namespace caf::flow {
 
+class notifiable;
+
+using notifiable_ptr = intrusive_ptr<notifiable>;
+
 class batch;
 
 class publisher_factory;

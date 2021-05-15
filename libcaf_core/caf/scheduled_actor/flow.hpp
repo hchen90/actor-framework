@@ -190,7 +190,7 @@ scheduled_actor::observe_impl(flow::async::publisher_ptr<T> source) {
 
 template <class T>
 flow::async::publisher_ptr<T>
-scheduled_actor::lift_impl(flow::publisher_ptr<T> source) {
+scheduled_actor::to_async_publisher_impl(flow::publisher_ptr<T> source) {
   watch(source.get());
   return make_counted<detail::publisher_proxy<T>>(actor_cast<actor>(this),
                                                   std::move(source));

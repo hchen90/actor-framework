@@ -45,7 +45,7 @@ public:
       launch();
     } else {
       auto init_res = init(ptr, ptr->observe(std::move(pub)));
-      auto res = ptr->lift(init_res->as_publisher());
+      auto res = ptr->to_async_publisher(init_res->as_publisher());
       launch();
       return res;
     }
@@ -111,7 +111,7 @@ auto publisher_from(Context& ctx, Fn init, Ts&&... ctor_args) {
     = ctx.template make_flow_coordinator<Impl>(std::forward<Ts>(ctor_args)...);
   using init_res_t = decltype(init(ptr));
   static_assert(!std::is_same_v<init_res_t, void>);
-  auto res = ptr->lift(init(ptr));
+  auto res = ptr->to_async_publisher(init(ptr));
   launch();
   return res;
 }

@@ -146,6 +146,7 @@ caf_add_component(
     src/flow/batch.cpp
     src/flow/coordinator.cpp
     src/flow/disposable.cpp
+    src/flow/notifiable.cpp
     src/flow/publisher_base.cpp
     src/flow/subscriber_base.cpp
     src/forwarding_actor_proxy.cpp

@@ -9,8 +9,6 @@
 #include <utility>
 #include <vector>
 
-#include "caf/actor.hpp"
-#include "caf/event_based_actor.hpp"
 #include "caf/flow/async/notifiable.hpp"
 #include "caf/flow/async/publisher.hpp"
 #include "caf/flow/publisher.hpp"
@@ -65,17 +63,9 @@ public:
 
   using queue_ptr = std::shared_ptr<queue>;
 
-  publishing_queue(queue_ptr queue, caf::actor worker,
-                   notifiable_ptr notify_hdl)
-    : queue_(std::move(queue)),
-      worker_(std::move(worker)),
-      notify_hdl_(std::move(notify_hdl)) {
+  publishing_queue(queue_ptr queue, notifiable_ptr notify_hdl)
+    : queue_(std::move(queue)), notify_hdl_(std::move(notify_hdl)) {
     // nop
-  }
-
-  ~publishing_queue() {
-    if (worker_)
-      anon_send(worker_, detail::unsafe_flow_msg{close_atom_v, notify_hdl_});
   }
 
   /// Tries to push `value` into the queue without blocking.
@@ -83,7 +73,7 @@ public:
   bool try_push(T value) {
     auto [added, do_notify] = queue_->try_push(std::move(value));
     if (do_notify)
-      anon_send(worker_, detail::unsafe_flow_msg{notify_hdl_});
+      notify_hdl_->on_notify();
     return added;
   }
 
@@ -92,12 +82,11 @@ public:
   void push(T value) {
     auto do_notify = queue_->push(std::move(value));
     if (do_notify)
-      anon_send(worker_, detail::unsafe_flow_msg{notify_hdl_});
+      notify_hdl_->on_notify();
   }
 
 private:
   queue_ptr queue_;
-  caf::actor worker_;
   notifiable_ptr notify_hdl_;
 };
 
@@ -109,7 +98,7 @@ using publishing_queue_ptr = intrusive_ptr<publishing_queue<T>>;
 /// @relates publishing_queue
 template <class T>
 class publishing_queue_backend : public flow::buffered_publisher<T>,
-                                 public notifiable {
+                                 public flow::notifiable {
 public:
   using super = flow::buffered_publisher<T>;
 
@@ -171,24 +160,19 @@ private:
 ///          @ref flow::async::publisher that wraps the created
 ///          @ref flow::publisher.
 /// @relates publishing_queue
-template <class T>
-auto make_publishing_queue(actor_system& sys, size_t capacity) {
+template <class T, class WorkerImpl = event_based_actor, class Context>
+auto make_publishing_queue(Context& ctx, size_t capacity) {
   using impl = publishing_queue<T>;
-  using worker_impl = event_based_actor;
-  auto [self, launch] = sys.template make_flow_coordinator<worker_impl>();
-  notifiable_ptr notify_hdl;
+  using backend_impl = publishing_queue_backend<T>;
+  auto [self, launch] = ctx.template make_flow_coordinator<WorkerImpl>();
   auto queue = std::make_shared<typename impl::queue>(capacity);
-  auto init = [self{self}, &notify_hdl, queue]() mutable {
-    using backend_impl = publishing_queue_backend<T>;
-    auto backend = make_counted<backend_impl>(self, std::move(queue));
-    notify_hdl = backend;
-    return backend->as_publisher();
-  };
-  auto pub = self->lift(init());
+  auto backend = make_counted<backend_impl>(self, queue);
+  auto notify_hdl = self->to_async_notifiable(backend);
+  auto pub_hdl = self->to_async_publisher(backend);
   launch();
-  return std::make_pair(make_counted<impl>(std::move(queue), actor{self},
+  return std::make_pair(make_counted<impl>(std::move(queue),
                                            std::move(notify_hdl)),
-                        std::move(pub));
+                        std::move(pub_hdl));
 }
 
 } // namespace caf::flow::async

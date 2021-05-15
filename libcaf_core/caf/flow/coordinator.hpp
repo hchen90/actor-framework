@@ -92,7 +92,7 @@ auto spawn(Context& ctx, Fn init, Ts&&... ctor_args) {
     launch();
     return hdl;
   } else {
-    auto res = ptr->lift(init(ptr));
+    auto res = ptr->to_async_publisher(init(ptr));
     auto hdl = typename Impl::handle_type{ptr};
     launch();
     return std::make_tuple(hdl, res);

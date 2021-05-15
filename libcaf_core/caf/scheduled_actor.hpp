@@ -21,9 +21,11 @@
 #include "caf/detail/unordered_flat_map.hpp"
 #include "caf/error.hpp"
 #include "caf/extend.hpp"
+#include "caf/flow/async/notifiable.hpp"
 #include "caf/flow/coordinator.hpp"
 #include "caf/flow/disposable.hpp"
 #include "caf/flow/fwd.hpp"
+#include "caf/flow/notifiable.hpp"
 #include "caf/flow/publisher_base.hpp"
 #include "caf/flow/subscriber_base.hpp"
 #include "caf/fwd.hpp"
@@ -497,16 +499,22 @@ public:
     return observe_impl(std::move(source));
   }
 
-  /// Makes items from `source` visible outside of this actor.
+  /// Makes items from `source` visible outside of this actor by wrapping it
+  /// into an @ref flow::async::publisher.
   /// @note Include `caf/scheduled_actor/flow.hpp` for this member function.
   template <class T>
-  auto lift(intrusive_ptr<T> source)
+  auto to_async_publisher(intrusive_ptr<T> source)
     -> flow::async::publisher_ptr<typename T::published_type> {
     using value_type = typename T::published_type;
+    using publisher_ptr_type = flow::publisher_ptr<value_type>;
     static_assert(flow::has_impl_include_v<detail::left_t<scheduled_actor, T>>,
                   "include 'caf/scheduled_actor/flow.hpp' for this method");
-    return lift_impl(flow::publisher_ptr<value_type>{std::move(source)});
+    return to_async_publisher_impl(publisher_ptr_type{std::move(source)});
   }
+
+  /// Makes items from `source` visible outside of this actor by wrapping it
+  /// into an @ref flow::async::notifiable.
+  flow::async::notifiable_ptr to_async_notifiable(flow::notifiable_ptr);
 
   // -- inbound_path management ------------------------------------------------
 
@@ -761,7 +769,8 @@ private:
   flow::publisher_ptr<T> observe_impl(flow::async::publisher_ptr<T> source);
 
   template <class T>
-  flow::async::publisher_ptr<T> lift_impl(flow::publisher_ptr<T> source);
+  flow::async::publisher_ptr<T>
+  to_async_publisher_impl(flow::publisher_ptr<T> source);
 
   struct flow_event {
     enum type_t { request, cancel };
