@@ -14,21 +14,27 @@ namespace caf::flow {
 
 // -- batch::data --------------------------------------------------------------
 
-batch::data::~data() {
-  if (size_ > 0) {
-    auto meta = detail::global_meta_object(item_type_);
-    auto ptr = storage();
-    do {
-      meta->destroy(ptr);
-      ptr += item_size_;
-      --size_;
-    } while (size_ > 0);
-  }
-}
+namespace {
+
+// void dynamic_item_destructor(type_id_t item_type, uint16_t item_size,
+//                              size_t array_size, byte* data_ptr) {
+//   auto meta = detail::global_meta_object(item_type);
+//   do {
+//     meta->destroy(data_ptr);
+//     data_ptr += item_size;
+//     --array_size;
+//   } while (array_size > 0);
+// }
+
+} // namespace
 
 template <class Inspector>
 bool batch::data::save(Inspector& sink) const {
   CAF_ASSERT(size_ > 0);
+  if (item_type_ == invalid_type_id) {
+    sink.emplace_error(sec::unsafe_type);
+    return false;
+  }
   auto meta = detail::global_meta_object(item_type_);
   auto ptr = storage_;
   if (!sink.begin_sequence(size_))
