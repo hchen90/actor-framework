@@ -2,7 +2,7 @@
 // the main distribution directory for license terms and copyright or visit
 // https://github.com/actor-framework/actor-framework/blob/master/LICENSE.
 
-#include "caf/flow/batch.hpp"
+#include "caf/async/batch.hpp"
 
 #include "caf/binary_deserializer.hpp"
 #include "caf/binary_serializer.hpp"
@@ -10,7 +10,7 @@
 #include "caf/detail/meta_object.hpp"
 #include "caf/serializer.hpp"
 
-namespace caf::flow {
+namespace caf::async {
 
 // -- batch::data --------------------------------------------------------------
 
@@ -94,4 +94,4 @@ bool batch::load(binary_deserializer& f) {
   return load_impl(f);
 }
 
-} // namespace caf::flow
+} // namespace caf::async

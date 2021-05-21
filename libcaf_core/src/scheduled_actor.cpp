@@ -593,25 +593,25 @@ uint64_t scheduled_actor::set_stream_timeout(actor_clock::time_point x) {
 
 namespace caf::detail {
 
-class notifiable_proxy : public flow::async::notifiable {
+class notifiable_impl : public async::notifiable::impl {
 public:
-  notifiable_proxy(scheduled_actor* self, flow::notifiable_ptr ptr)
+  notifiable_impl(scheduled_actor* self, async::notifiable::listener_ptr ptr)
     : hdl_(self->ctrl(), true), ptr_(std::move(ptr)) {
     // nop
   }
 
-  ~notifiable_proxy() {
+  ~notifiable_impl() {
     if (hdl_)
       hdl_->eq_impl(make_message_id(), nullptr, nullptr,
                     unsafe_flow_msg{close_atom_v, ptr_});
   }
 
-  void on_notify() override {
+  void notify_event() override {
     if (hdl_)
       hdl_->eq_impl(make_message_id(), nullptr, nullptr, unsafe_flow_msg{ptr_});
   }
 
-  void on_close() override {
+  void notify_close() override {
     if (hdl_) {
       hdl_->eq_impl(make_message_id(), nullptr, nullptr,
                     unsafe_flow_msg{close_atom_v, ptr_});
@@ -619,7 +619,7 @@ public:
     }
   }
 
-  void on_abort(const error& reason) override {
+  void notify_abort(const error& reason) override {
     if (hdl_) {
       hdl_->eq_impl(make_message_id(), nullptr, nullptr,
                     unsafe_flow_msg{ptr_, reason});
@@ -634,16 +634,17 @@ public:
 
 private:
   actor hdl_;
-  flow::notifiable_ptr ptr_;
+  async::notifiable::listener_ptr ptr_;
 };
 
 } // namespace caf::detail
 
 namespace caf {
 
-flow::async::notifiable_ptr
-scheduled_actor::to_async_notifiable(flow::notifiable_ptr ptr) {
-  return make_counted<detail::notifiable_proxy>(this, std::move(ptr));
+async::notifiable
+scheduled_actor::to_async_notifiable(async::notifiable::listener_ptr listener) {
+  auto ptr = make_counted<detail::notifiable_impl>(this, std::move(listener));
+  return async::notifiable{std::move(ptr)};
 }
 
 // -- message processing -------------------------------------------------------
@@ -972,7 +973,7 @@ bool scheduled_actor::finalize() {
   CAF_ASSERT(!has_behavior());
   while (!watched_disposables_.empty()) {
     for (auto& ptr : watched_disposables_)
-      ptr->dispose();
+      ptr.dispose();
     watched_disposables_.clear();
     handle_flow_events();
   }
@@ -1279,24 +1280,24 @@ std::vector<stream_manager*> scheduled_actor::active_stream_managers() {
 
 // -- scheduling of caf::flow events -------------------------------------------
 
-void scheduled_actor::dispatch_request(flow::publisher_base* source,
-                                       flow::subscriber_base* sink, size_t n) {
+void scheduled_actor::dispatch_request(flow::observable_base* source,
+                                       flow::observer_base* sink, size_t n) {
   CAF_ASSERT(source != nullptr);
   CAF_ASSERT(sink != nullptr);
   CAF_ASSERT(n > 0);
   flow_events_.emplace_back(flow_event{flow_event::request, source, sink, n});
 }
 
-void scheduled_actor::dispatch_cancel(flow::publisher_base* source,
-                                      flow::subscriber_base* sink) {
+void scheduled_actor::dispatch_cancel(flow::observable_base* source,
+                                      flow::observer_base* sink) {
   CAF_ASSERT(source != nullptr);
   CAF_ASSERT(sink != nullptr);
   flow_events_.emplace_back(flow_event{flow_event::cancel, source, sink, 0u});
 }
 
-void scheduled_actor::watch(flow::disposable* obj) {
-  CAF_ASSERT(obj != nullptr);
-  watched_disposables_.emplace_back(obj);
+void scheduled_actor::watch(flow::disposable obj) {
+  CAF_ASSERT(obj.valid());
+  watched_disposables_.emplace_back(std::move(obj));
 }
 
 void scheduled_actor::handle_flow_events() {
@@ -1318,7 +1319,7 @@ void scheduled_actor::handle_flow_events() {
 }
 
 void scheduled_actor::drop_disposed_flows() {
-  auto disposed = [](auto& ptr) { return ptr->disposed(); };
+  auto disposed = [](auto& hdl) { return hdl.disposed(); };
   auto& xs = watched_disposables_;
   xs.erase(std::remove_if(xs.begin(), xs.end(), disposed), xs.end());
 }

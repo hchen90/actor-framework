@@ -4,58 +4,50 @@
 
 #pragma once
 
-#include <cstddef>
-
 #include "caf/detail/core_export.hpp"
 #include "caf/intrusive_ptr.hpp"
 #include "caf/ref_counted.hpp"
 
 namespace caf::flow {
 
-/// Controls the flow of items from publishers to subscribers.
-class CAF_CORE_EXPORT subscription : public ref_counted {
+/// Represents a disposable resource.
+class CAF_CORE_EXPORT disposable {
 public:
   /// Internal impl of a `disposable`.
   class impl : public virtual ref_counted {
   public:
     ~impl() override;
 
-    /// Causes the publisher to stop producing items for the subscriber. Any
-    /// in-flight items may still get dispatched.
-    virtual void cancel() = 0;
+    /// Disposes the resource.
+    /// @note Calling `dispose()` on a disposed resource is a no-op.
+    virtual void dispose() = 0;
 
-    /// Signals demand for `n` more items.
-    virtual void request(size_t n) = 0;
+    /// Checks whether the resource has been disposed.
+    virtual bool disposed() const noexcept = 0;
   };
 
-  explicit subscription(intrusive_ptr<impl> pimpl) noexcept
+  explicit disposable(intrusive_ptr<impl> pimpl) noexcept
     : pimpl_(std::move(pimpl)) {
     // nop
   }
 
-  subscription& operator=(std::nullptr_t) noexcept {
-    pimpl_.reset();
-    return *this;
-  }
+  disposable() noexcept = default;
+  disposable(disposable&&) noexcept = default;
+  disposable(const disposable&) noexcept = default;
+  disposable& operator=(disposable&&) noexcept = default;
+  disposable& operator=(const disposable&) noexcept = default;
 
-  subscription() noexcept = default;
-  subscription(subscription&&) noexcept = default;
-  subscription(const subscription&) noexcept = default;
-  subscription& operator=(subscription&&) noexcept = default;
-  subscription& operator=(const subscription&) noexcept = default;
-
-  /// @copydoc impl::cancel
-  void cancel() {
+  /// @copydoc impl::dispose
+  void dispose() {
     if (pimpl_) {
-      pimpl_->cancel();
+      pimpl_->dispose();
       pimpl_ = nullptr;
     }
   }
 
-  /// @copydoc impl::request
-  /// @pre `valid()`
-  void request(size_t n) {
-    pimpl_->request(n);
+  /// @copydoc impl::disposed
+  [[nodiscard]] bool disposed() const noexcept {
+    return pimpl_ ? pimpl_->disposed() : true;
   }
 
   bool valid() const noexcept {
@@ -82,7 +74,7 @@ public:
     return std::move(pimpl_);
   }
 
-  void swap(subscription& other) {
+  void swap(disposable& other) {
     pimpl_.swap(other.pimpl_);
   }
 

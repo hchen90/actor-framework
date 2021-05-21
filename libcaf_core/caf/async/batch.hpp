@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <memory>
 
+#include "caf/async/fwd.hpp"
 #include "caf/byte.hpp"
 #include "caf/config.hpp"
 #include "caf/detail/core_export.hpp"
@@ -30,12 +31,7 @@
 #  pragma warning(disable : 4200)
 #endif
 
-namespace caf::flow {
-
-class batch;
-
-template <class T>
-batch make_batch(span<const T> items);
+namespace caf::async {
 
 /// A reference-counted container for transferring items from publishers to
 /// subscribers.
@@ -222,7 +218,7 @@ batch make_batch(span<const T> items) {
   return batch{std::move(ptr)};
 }
 
-} // namespace caf::flow
+} // namespace caf::async
 
 #ifdef CAF_CLANG
 #  pragma clang diagnostic pop

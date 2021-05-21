@@ -8,91 +8,101 @@
 
 namespace caf::flow {
 
-class notifiable;
-
-using notifiable_ptr = intrusive_ptr<notifiable>;
-
-class batch;
-
-class publisher_factory;
-
-class publisher_factory_ptr;
-
-class disposable;
-
-using disposable_ptr = intrusive_ptr<disposable>;
+class coordinator;
 
 class subscription;
 
-using subscription_ptr = intrusive_ptr<subscription>;
+class observer_base;
 
-class subscriber_base;
+using observer_base_ptr = intrusive_ptr<observer_base>;
 
-using subscriber_base_ptr = intrusive_ptr<subscriber_base>;
+class observable_base;
 
-template <class T>
-class subscriber;
-
-template <class T>
-using subscriber_ptr = intrusive_ptr<subscriber<T>>;
-
-class coordinator;
-
-class publisher_base;
-
-using publisher_base_ptr = intrusive_ptr<publisher_base>;
+using observable_base_ptr = intrusive_ptr<observable_base>;
 
 template <class T>
-class publisher;
+class observer;
 
 template <class T>
-using publisher_ptr = intrusive_ptr<publisher<T>>;
+class observable;
 
-} // namespace caf::flow
+template <class In, class Out>
+class processor;
 
-namespace caf::flow::async {
+template <class Generator, class... Steps>
+class generation;
 
-class notifiable;
-
-using notifiable_ptr = intrusive_ptr<notifiable>;
-
-template <class T>
-class publisher;
+template <class Step, class... Steps>
+class transformation;
 
 template <class T>
-using publisher_ptr = intrusive_ptr<publisher<T>>;
-
-template <class T>
-class publishing_queue;
-
-template <class T>
-using publishing_queue_ptr = intrusive_ptr<publishing_queue<T>>;
-
-} // namespace caf::flow::async
-
-namespace caf::flow {
-
-template <class T>
-struct subscribed_type_oracle {
-  using type = typename T::subscribed_type;
+struct is_observable {
+  static constexpr bool value = false;
 };
 
 template <class T>
-struct subscribed_type_oracle<intrusive_ptr<T>> : subscribed_type_oracle<T> {};
+struct is_observable<observable<T>> {
+  static constexpr bool value = true;
+};
 
-template <class T>
-using subscribed_type_t = typename subscribed_type_oracle<T>::type;
+template <class Step, class... Steps>
+struct is_observable<transformation<Step, Steps...>> {
+  static constexpr bool value = true;
+};
 
-template <class T>
-struct published_type_oracle {
-  using type = typename T::published_type;
+template <class Generator, class... Steps>
+struct is_observable<generation<Generator, Steps...>> {
+  static constexpr bool value = true;
+};
+
+template <class In, class Out>
+struct is_observable<processor<In, Out>> {
+  static constexpr bool value = true;
 };
 
 template <class T>
-struct published_type_oracle<intrusive_ptr<T>> : published_type_oracle<T> {};
+constexpr bool is_observable_v = is_observable<T>::value;
 
 template <class T>
-using published_type_t = typename published_type_oracle<T>::type;
+struct is_observer {
+  static constexpr bool value = false;
+};
+
+template <class T>
+struct is_observer<observer<T>> {
+  static constexpr bool value = true;
+};
+
+template <class Step, class... Steps>
+struct is_observer<transformation<Step, Steps...>> {
+  static constexpr bool value = true;
+};
+
+template <class In, class Out>
+struct is_observer<processor<In, Out>> {
+  static constexpr bool value = true;
+};
+
+template <class T>
+constexpr bool is_observer_v = is_observer<T>::value;
+
+class observable_builder;
+
+template <class T>
+struct input_type_oracle {
+  using type = typename T::input_type;
+};
+
+template <class T>
+using input_type_t = typename input_type_oracle<T>::type;
+
+template <class T>
+struct output_type_oracle {
+  using type = typename T::output_type;
+};
+
+template <class T>
+using output_type_t = typename output_type_oracle<T>::type;
 
 template <class>
 struct has_impl_include {

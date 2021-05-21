@@ -16,18 +16,17 @@
 #include <unordered_map>
 
 #include "caf/actor_traits.hpp"
+#include "caf/async/notifiable.hpp"
 #include "caf/detail/behavior_stack.hpp"
 #include "caf/detail/core_export.hpp"
 #include "caf/detail/unordered_flat_map.hpp"
+#include "caf/disposable.hpp"
 #include "caf/error.hpp"
 #include "caf/extend.hpp"
-#include "caf/flow/async/notifiable.hpp"
 #include "caf/flow/coordinator.hpp"
-#include "caf/flow/disposable.hpp"
 #include "caf/flow/fwd.hpp"
-#include "caf/flow/notifiable.hpp"
-#include "caf/flow/publisher_base.hpp"
-#include "caf/flow/subscriber_base.hpp"
+#include "caf/flow/observable_base.hpp"
+#include "caf/flow/observer_base.hpp"
 #include "caf/fwd.hpp"
 #include "caf/inbound_path.hpp"
 #include "caf/intrusive/drr_cached_queue.hpp"
@@ -493,28 +492,28 @@ public:
   /// Observes items from `source` on this actor.
   /// @note Include `caf/scheduled_actor/flow.hpp` for this member function.
   template <class T>
-  flow::publisher_ptr<T> observe(flow::async::publisher_ptr<T> source) {
+  flow::observable<T> observe(async::publisher<T> source) {
     static_assert(flow::has_impl_include_v<detail::left_t<scheduled_actor, T>>,
                   "include 'caf/scheduled_actor/flow.hpp' for this method");
     return observe_impl(std::move(source));
   }
 
   /// Makes items from `source` visible outside of this actor by wrapping it
-  /// into an @ref flow::async::publisher.
+  /// into an @ref async::publisher.
   /// @note Include `caf/scheduled_actor/flow.hpp` for this member function.
-  template <class T>
-  auto to_async_publisher(intrusive_ptr<T> source)
-    -> flow::async::publisher_ptr<typename T::published_type> {
-    using value_type = typename T::published_type;
-    using publisher_ptr_type = flow::publisher_ptr<value_type>;
+  template <class Observable>
+  async::publisher<typename Observable::output_type>
+  to_async_publisher(Observable source) {
+    using T = typename Observable::output_type;
     static_assert(flow::has_impl_include_v<detail::left_t<scheduled_actor, T>>,
                   "include 'caf/scheduled_actor/flow.hpp' for this method");
-    return to_async_publisher_impl(publisher_ptr_type{std::move(source)});
+    return to_async_publisher_impl(std::move(source));
   }
 
-  /// Makes items from `source` visible outside of this actor by wrapping it
-  /// into an @ref flow::async::notifiable.
-  flow::async::notifiable_ptr to_async_notifiable(flow::notifiable_ptr);
+  /// Creates an @ref async::notifiable that other parts of the system may
+  /// call asynchronously for triggering events on the `listener`.
+  async::notifiable
+  to_async_notifiable(async::notifiable::listener_ptr listener);
 
   // -- inbound_path management ------------------------------------------------
 
@@ -680,6 +679,8 @@ public:
 
   std::vector<stream_manager*> active_stream_managers();
 
+  void handle_flow_events();
+
   /// @endcond
 
 protected:
@@ -766,34 +767,32 @@ private:
   // -- scheduling of caf::flow events -----------------------------------------
 
   template <class T>
-  flow::publisher_ptr<T> observe_impl(flow::async::publisher_ptr<T> source);
+  flow::observable<T> observe_impl(async::publisher<T> source);
 
-  template <class T>
-  flow::async::publisher_ptr<T>
-  to_async_publisher_impl(flow::publisher_ptr<T> source);
+  template <class Observable>
+  async::publisher<typename Observable::output_type>
+  to_async_publisher_impl(Observable source);
 
   struct flow_event {
     enum type_t { request, cancel };
     type_t type;
-    flow::publisher_base_ptr source;
-    flow::subscriber_base_ptr sink;
+    flow::observable_base_ptr source;
+    flow::observer_base_ptr sink;
     size_t arg;
   };
 
-  void dispatch_request(flow::publisher_base* src, flow::subscriber_base* snk,
+  void dispatch_request(flow::observable_base* src, flow::observer_base* snk,
                         size_t n) override;
 
-  void dispatch_cancel(flow::publisher_base* src,
-                       flow::subscriber_base* snk) override;
+  void dispatch_cancel(flow::observable_base* src,
+                       flow::observer_base* snk) override;
 
-  void watch(flow::disposable* obj) override;
-
-  void handle_flow_events();
+  void watch(flow::disposable what) override;
 
   void drop_disposed_flows();
 
   std::vector<flow_event> flow_events_;
-  std::vector<flow::disposable_ptr> watched_disposables_;
+  std::vector<flow::disposable> watched_disposables_;
 };
 
 } // namespace caf

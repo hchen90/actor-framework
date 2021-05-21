@@ -5,7 +5,7 @@
 #include "caf/flow/coordinator.hpp"
 
 #include "caf/config.hpp"
-#include "caf/flow/publisher_factory.hpp"
+#include "caf/flow/observable_builder.hpp"
 
 namespace caf::flow {
 
@@ -13,8 +13,8 @@ coordinator::~coordinator() {
   // nop
 }
 
-publisher_factory_ptr coordinator::make_publisher() {
-  return publisher_factory_ptr{this};
+observable_builder coordinator::make_observable() {
+  return observable_builder{this};
 }
 
 void coordinator::subscription_impl::request(size_t n) {

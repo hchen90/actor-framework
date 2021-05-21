@@ -96,6 +96,7 @@ class config_option_adder;
 class config_option_set;
 class config_value;
 class deserializer;
+class disposable;
 class downstream_manager;
 class downstream_manager_base;
 class event_based_actor;

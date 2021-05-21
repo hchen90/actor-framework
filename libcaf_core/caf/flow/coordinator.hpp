@@ -8,25 +8,25 @@
 
 #include "caf/detail/core_export.hpp"
 #include "caf/flow/fwd.hpp"
-#include "caf/flow/publisher_base.hpp"
-#include "caf/flow/subscriber_base.hpp"
+#include "caf/flow/observable_base.hpp"
+#include "caf/flow/observer_base.hpp"
 #include "caf/flow/subscription.hpp"
 #include "caf/intrusive_ptr.hpp"
 #include "caf/ref_counted.hpp"
 
 namespace caf::flow {
 
-/// Coordinates any number of co-located publishers and subscribers. The
+/// Coordinates any number of co-located publishers and observers. The
 /// co-located objects never need to synchronize calls to other co-located
 /// objects since the coordinator guarantees synchronous execution.
 class CAF_CORE_EXPORT coordinator {
 public:
-  class CAF_CORE_EXPORT subscription_impl : public subscription {
+  class CAF_CORE_EXPORT subscription_impl : public subscription::impl {
   public:
     friend class coordinator;
 
-    subscription_impl(coordinator* ctx, publisher_base_ptr src,
-                      subscriber_base_ptr snk)
+    subscription_impl(coordinator* ctx, observable_base_ptr src,
+                      observer_base_ptr snk)
       : ctx_(ctx), src_(std::move(src)), snk_(std::move(snk)) {
       // nop
     }
@@ -41,8 +41,8 @@ public:
 
   private:
     coordinator* ctx_;
-    publisher_base_ptr src_;
-    subscriber_base_ptr snk_;
+    observable_base_ptr src_;
+    observer_base_ptr snk_;
   };
 
   using subscription_impl_ptr = intrusive_ptr<subscription_impl>;
@@ -51,7 +51,7 @@ public:
 
   virtual ~coordinator();
 
-  [[nodiscard]] publisher_factory_ptr make_publisher();
+  [[nodiscard]] observable_builder make_observable();
 
 private:
   /// Eventually executes `source->on_request(sink, n)`.
@@ -59,19 +59,19 @@ private:
   /// @pre `sink != nullptr`.
   /// @pre `n > 0`.
   virtual void
-  dispatch_request(publisher_base* source, subscriber_base* sink, size_t n)
+  dispatch_request(observable_base* source, observer_base* sink, size_t n)
     = 0;
 
   /// Eventually executes `source->on_cancel(sink)`.
   /// @pre `source != nullptr`.
   /// @pre `sink != nullptr`.
-  virtual void dispatch_cancel(publisher_base* source, subscriber_base* sink)
+  virtual void dispatch_cancel(observable_base* source, observer_base* sink)
     = 0;
 
   /// Asks the coordinator to keep its event loop running until `obj` becomes
-  /// disposed since it depends on external events.
-  /// @pre `obj != nullptr`.
-  virtual void watch(disposable* obj) = 0;
+  /// disposed since it depends on external events or produces events that are
+  /// visible to outside observers.
+  virtual void watch(disposable what) = 0;
 };
 
 /// Creates a new @ref coordinator with a function to set up flow logic before

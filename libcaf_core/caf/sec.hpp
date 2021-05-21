@@ -163,6 +163,8 @@ enum class sec : uint8_t {
   broken_promise,
   /// Disconnected from a BASP node after reaching the connection timeout.
   connection_timeout,
+  /// Attaching to an observable failed because the target is invalid.
+  invalid_observable,
 };
 // --(rst-sec-end)--
 

@@ -20,11 +20,11 @@ void unsafe_flow_msg::on_batch::render(std::string& str) const {
   str += ')';
 }
 
-void unsafe_flow_msg::on_subscribe ::render(std::string& str) const {
-  str += "on_subscribe(sink: ";
+void unsafe_flow_msg::on_attach ::render(std::string& str) const {
+  str += "on_attach(sink: ";
   print(str, reinterpret_cast<intptr_t>(sink.get()));
   str += ", sub: ";
-  print(str, reinterpret_cast<intptr_t>(sub.get()));
+  print(str, reinterpret_cast<intptr_t>(sub.ptr()));
   str += ')';
 }
 
@@ -42,8 +42,8 @@ void unsafe_flow_msg::on_error::render(std::string& str) const {
   str += ')';
 }
 
-void unsafe_flow_msg::subscribe::render(std::string& str) const {
-  str += "subscribe(source: ";
+void unsafe_flow_msg::attach::render(std::string& str) const {
+  str += "attach(source: ";
   print(str, reinterpret_cast<intptr_t>(source.get()));
   str += ", sink: ";
   print(str, reinterpret_cast<intptr_t>(sink.get()));
@@ -52,7 +52,7 @@ void unsafe_flow_msg::subscribe::render(std::string& str) const {
 
 void unsafe_flow_msg::request::render(std::string& str) const {
   str += "request(sub: ";
-  print(str, reinterpret_cast<intptr_t>(sub.get()));
+  print(str, reinterpret_cast<intptr_t>(sub.ptr()));
   str += ", demand: ";
   print(str, demand);
   str += ')';
@@ -60,7 +60,7 @@ void unsafe_flow_msg::request::render(std::string& str) const {
 
 void unsafe_flow_msg::cancel::render(std::string& str) const {
   str += "cancel(sub: ";
-  print(str, reinterpret_cast<intptr_t>(sub.get()));
+  print(str, reinterpret_cast<intptr_t>(sub.ptr()));
   str += ')';
 }
 
@@ -71,8 +71,8 @@ std::string to_string(const unsafe_flow_msg& msg) {
   return result;
 }
 
-void unsafe_flow_msg::on_notify::render(std::string& str) const {
-  str += "on_notify(ptr: ";
+void unsafe_flow_msg::on_event::render(std::string& str) const {
+  str += "on_event(ptr: ";
   print(str, reinterpret_cast<intptr_t>(ptr.get()));
   str += ')';
 }

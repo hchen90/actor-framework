@@ -7,12 +7,12 @@
 #include <variant>
 
 #include "caf/allowed_unsafe_message_type.hpp"
+#include "caf/async/batch.hpp"
+#include "caf/async/notifiable.hpp"
 #include "caf/detail/core_export.hpp"
 #include "caf/error.hpp"
-#include "caf/flow/batch.hpp"
-#include "caf/flow/notifiable.hpp"
-#include "caf/flow/publisher_base.hpp"
-#include "caf/flow/subscriber_base.hpp"
+#include "caf/flow/observable_base.hpp"
+#include "caf/flow/observer_base.hpp"
 #include "caf/flow/subscription.hpp"
 
 namespace caf::detail {
@@ -21,15 +21,16 @@ class CAF_CORE_EXPORT unsafe_flow_msg {
 public:
   template <class T>
   static void
-  subscribe_impl(flow::publisher_base* source, flow::subscriber_base* sink) {
-    auto dptr = static_cast<flow::publisher<T>*>(source);
-    dptr->subscribe(static_cast<flow::subscriber<T>*>(sink));
+  attach_impl(flow::observable_base* source, flow::observer_base* sink) {
+    auto src_dptr = static_cast<typename flow::observable<T>::impl*>(source);
+    auto sink_dptr = static_cast<typename flow::observer<T>::impl*>(sink);
+    src_dptr->attach(flow::observer<T>{sink_dptr});
   }
 
-  using subscribe_fn = void (*)(flow::publisher_base*, flow::subscriber_base*);
+  using attach_fn = void (*)(flow::observable_base*, flow::observer_base*);
 
   struct nop {
-    void exec() const {
+    void exec() {
       // nop
     }
     void render(std::string& str) const;
@@ -40,139 +41,139 @@ public:
   }
 
   struct on_batch {
-    flow::subscriber_base_ptr sink;
-    flow::batch content;
-    void exec() const {
+    flow::observer_base_ptr sink;
+    async::batch content;
+    void exec() {
       sink->on_batch(content);
     }
     void render(std::string& str) const;
   };
 
-  unsafe_flow_msg(flow::subscriber_base_ptr sink, flow::batch content)
+  unsafe_flow_msg(flow::observer_base_ptr sink, async::batch content)
     : event(on_batch{std::move(sink), std::move(content)}) {
     // nop
   }
 
-  struct on_subscribe {
-    flow::subscriber_base_ptr sink;
-    flow::subscription_ptr sub;
-    void exec() const {
-      sink->on_subscribe(sub);
+  struct on_attach {
+    flow::observer_base_ptr sink;
+    flow::subscription sub;
+    void exec() {
+      sink->on_attach(sub);
     }
     void render(std::string& str) const;
   };
 
-  unsafe_flow_msg(flow::subscriber_base_ptr sink, flow::subscription_ptr sub)
-    : event(on_subscribe{std::move(sink), std::move(sub)}) {
+  unsafe_flow_msg(flow::observer_base_ptr sink, flow::subscription sub)
+    : event(on_attach{std::move(sink), std::move(sub)}) {
     // nop
   }
 
   struct on_complete {
-    flow::subscriber_base_ptr sink;
-    void exec() const {
+    flow::observer_base_ptr sink;
+    void exec() {
       sink->on_complete();
     }
     void render(std::string& str) const;
   };
 
-  template <class T>
-  explicit unsafe_flow_msg(flow::subscriber_ptr<T> sink)
+  explicit unsafe_flow_msg(flow::observer_base_ptr sink)
     : event(on_complete{std::move(sink)}) {
     // nop
   }
 
   struct on_error {
-    flow::subscriber_base_ptr sink;
+    flow::observer_base_ptr sink;
     error what;
-    void exec() const {
+    void exec() {
       sink->on_error(what);
     }
     void render(std::string& str) const;
   };
 
-  template <class T>
-  unsafe_flow_msg(flow::subscriber_ptr<T> sink, error what)
+  unsafe_flow_msg(flow::observer_base_ptr sink, error what)
     : event(on_error{std::move(sink), std::move(what)}) {
     // nop
   }
 
-  struct subscribe {
-    flow::publisher_base_ptr source;
-    flow::subscriber_base_ptr sink;
-    subscribe_fn fn;
-    void exec() const {
+  struct attach {
+    flow::observable_base_ptr source;
+    flow::observer_base_ptr sink;
+    attach_fn fn;
+    void exec() {
       fn(source.get(), sink.get());
     }
     void render(std::string& str) const;
   };
 
   template <class T>
-  unsafe_flow_msg(flow::publisher_ptr<T> source, flow::subscriber_ptr<T> sink)
-    : event(subscribe{std::move(source), std::move(sink), subscribe_impl<T>}) {
+  unsafe_flow_msg(flow::observable<T> source, flow::observer<T> sink)
+    : event(attach{std::move(source).as_intrusive_ptr(),
+                   std::move(sink).as_intrusive_ptr(), attach_impl<T>}) {
     // nop
   }
 
   struct request {
-    flow::subscription_ptr sub;
+    flow::subscription sub;
     size_t demand;
-    void exec() const {
-      sub->request(demand);
+    void exec() {
+      sub.request(demand);
     }
     void render(std::string& str) const;
   };
 
-  unsafe_flow_msg(flow::subscription_ptr sub, size_t demand)
+  unsafe_flow_msg(flow::subscription sub, size_t demand)
     : event(request{std::move(sub), demand}) {
     // nop
   }
 
   struct cancel {
-    flow::subscription_ptr sub;
-    void exec() const {
-      sub->cancel();
+    flow::subscription sub;
+    void exec() {
+      sub.cancel();
     }
     void render(std::string& str) const;
   };
 
-  unsafe_flow_msg(flow::subscription_ptr sub) : event(cancel{std::move(sub)}) {
+  unsafe_flow_msg(flow::subscription sub) : event(cancel{std::move(sub)}) {
     // nop
   }
 
-  struct on_notify {
-    flow::notifiable_ptr ptr;
-    void exec() const {
-      ptr->on_notify();
+  struct on_event {
+    async::notifiable::listener_ptr ptr;
+    void exec() {
+      ptr->on_event();
     }
     void render(std::string& str) const;
   };
 
-  unsafe_flow_msg(flow::notifiable_ptr ptr) : event(on_notify{std::move(ptr)}) {
+  unsafe_flow_msg(async::notifiable::listener_ptr ptr)
+    : event(on_event{std::move(ptr)}) {
     // nop
   }
 
   struct on_close {
-    flow::notifiable_ptr ptr;
-    void exec() const {
+    async::notifiable::listener_ptr ptr;
+    void exec() {
       ptr->on_close();
     }
     void render(std::string& str) const;
   };
 
-  unsafe_flow_msg(close_atom, flow::notifiable_ptr ptr)
+  unsafe_flow_msg(close_atom, async::notifiable::listener_ptr ptr)
     : event(on_close{std::move(ptr)}) {
     // nop
   }
 
   struct on_abort {
-    flow::notifiable_ptr ptr;
+    async::notifiable::listener_ptr ptr;
     error reason;
-    void exec() const {
+    void exec() {
       ptr->on_abort(reason);
     }
     void render(std::string& str) const;
   };
 
-  unsafe_flow_msg(flow::notifiable_ptr ptr, error reason)
+  unsafe_flow_msg(async::notifiable::listener_ptr ptr, error reason)
     : event(on_abort{std::move(ptr), std::move(reason)}) {
     // nop
   }
@@ -181,12 +182,12 @@ public:
   unsafe_flow_msg& operator=(const unsafe_flow_msg&) = default;
 
   using event_type
-    = std::variant<nop, on_batch, on_subscribe, on_complete, on_error,
-                   subscribe, request, cancel, on_notify, on_close, on_abort>;
+    = std::variant<nop, on_batch, on_attach, on_complete, on_error, attach,
+                   request, cancel, on_event, on_close, on_abort>;
 
   event_type event;
 
-  void exec() const {
+  void exec() {
     std::visit([](auto& ev) { ev.exec(); }, event);
   }
 };

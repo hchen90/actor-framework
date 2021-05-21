@@ -2,11 +2,11 @@
 // the main distribution directory for license terms and copyright or visit
 // https://github.com/actor-framework/actor-framework/blob/master/LICENSE.
 
-#include "caf/flow/disposable.hpp"
+#include "caf/disposable.hpp"
 
 namespace caf::flow {
 
-disposable::~disposable() {
+disposable::impl::~impl() {
   // nop
 }
 

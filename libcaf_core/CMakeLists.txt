@@ -42,7 +42,7 @@ configure_file("${PROJECT_SOURCE_DIR}/cmake/build_config.hpp.in"
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/caf/detail/build_config.hpp"
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/caf/detail/")
 
-#-- add targets -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -
+#-- add targets ----------------------------------------------------------------
 
 caf_add_component(
   core
@@ -80,6 +80,8 @@ caf_add_component(
     src/actor_registry.cpp
     src/actor_system.cpp
     src/actor_system_config.cpp
+    src/async/batch.cpp
+    src/async/notifiable.cpp
     src/attachable.cpp
     src/behavior.cpp
     src/binary_deserializer.cpp
@@ -136,19 +138,17 @@ caf_add_component(
     src/detail/token_based_credit_controller.cpp
     src/detail/type_id_list_builder.cpp
     src/detail/unsafe_flow_msg.cpp
+    src/disposable.cpp
     src/downstream_manager.cpp
     src/downstream_manager_base.cpp
     src/error.cpp
     src/event_based_actor.cpp
     src/execution_unit.cpp
     src/exit_reason_strings.cpp
-    src/flow/async/notifiable.cpp
-    src/flow/batch.cpp
     src/flow/coordinator.cpp
-    src/flow/disposable.cpp
-    src/flow/notifiable.cpp
-    src/flow/publisher_base.cpp
-    src/flow/subscriber_base.cpp
+    src/flow/observable_base.cpp
+    src/flow/observer_base.cpp
+    src/flow/subscription.cpp
     src/forwarding_actor_proxy.cpp
     src/group.cpp
     src/group_manager.cpp
@@ -236,6 +236,8 @@ caf_add_component(
     actor_system_config
     actor_termination
     aout
+    async.blocking_for_each
+    async.publishing_queue
     behavior
     binary_deserializer
     binary_serializer
@@ -288,7 +290,8 @@ caf_add_component(
     dynamic_spawn
     error
     expected
-    flow
+    flow.for_each
+    flow.merge
     function_view
     fused_downstream_manager
     handles

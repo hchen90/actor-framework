@@ -7,16 +7,18 @@
 #include <condition_variable>
 #include <type_traits>
 
-#include "caf/flow/poll_subscriber.hpp"
+#include "caf/async/observer_buffer.hpp"
 
-namespace caf::flow {
+namespace caf::async {
 
 /// Consumes all elements from a publisher and blocks the current thread until
 /// completion.
 template <class T>
-class blocking_subscriber : public poll_subscriber<T> {
+class blocking_observer : public observer_buffer<T> {
 public:
-  using super = poll_subscriber<T>;
+  using super = observer_buffer<T>;
+
+  using super::super;
 
   template <class OnNext, class OnError, class OnComplete>
   auto run(OnNext fun, OnError err, OnComplete fin) {
@@ -41,6 +43,9 @@ public:
             return;
           }
         } else {
+          static_assert(
+            std::is_same_v<void, fun_res>,
+            "OnNext handlers must have signature 'void(T)' or 'bool(T)'");
           fun(*val);
         }
       } else if (done) {
@@ -61,4 +66,4 @@ private:
   }
 };
 
-} // namespace caf::flow
+} // namespace caf::async

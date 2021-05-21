@@ -9,13 +9,13 @@
 #include <utility>
 #include <vector>
 
-#include "caf/flow/async/notifiable.hpp"
-#include "caf/flow/async/publisher.hpp"
-#include "caf/flow/publisher.hpp"
+#include "caf/async/notifiable.hpp"
+#include "caf/async/publisher.hpp"
+#include "caf/flow/observable.hpp"
 #include "caf/intrusive_ptr.hpp"
 #include "caf/ref_counted.hpp"
 
-namespace caf::flow::async {
+namespace caf::async {
 
 /// A queue that feeds asynchronously into a publisher until it is closed.
 template <class T>
@@ -63,7 +63,7 @@ public:
 
   using queue_ptr = std::shared_ptr<queue>;
 
-  publishing_queue(queue_ptr queue, notifiable_ptr notify_hdl)
+  publishing_queue(queue_ptr queue, notifiable notify_hdl)
     : queue_(std::move(queue)), notify_hdl_(std::move(notify_hdl)) {
     // nop
   }
@@ -73,7 +73,7 @@ public:
   bool try_push(T value) {
     auto [added, do_notify] = queue_->try_push(std::move(value));
     if (do_notify)
-      notify_hdl_->on_notify();
+      notify_hdl_.notify_event();
     return added;
   }
 
@@ -82,34 +82,38 @@ public:
   void push(T value) {
     auto do_notify = queue_->push(std::move(value));
     if (do_notify)
-      notify_hdl_->on_notify();
+      notify_hdl_.notify_event();
   }
 
 private:
   queue_ptr queue_;
-  notifiable_ptr notify_hdl_;
+  notifiable notify_hdl_;
 };
 
 /// @relates publishing_queue
 template <class T>
 using publishing_queue_ptr = intrusive_ptr<publishing_queue<T>>;
 
+} // namespace caf::async
+
+namespace caf::detail {
+
 /// The publisher where the @ref publishing_queue feeds into.
 /// @relates publishing_queue
 template <class T>
-class publishing_queue_backend : public flow::buffered_publisher<T>,
-                                 public flow::notifiable {
+class publishing_queue_backend : public flow::buffered_observable_impl<T>,
+                                 public async::notifiable::listener {
 public:
-  using super = flow::buffered_publisher<T>;
+  using super = flow::buffered_observable_impl<T>;
 
-  using queue_ptr = typename publishing_queue<T>::queue_ptr;
+  using queue_ptr = typename async::publishing_queue<T>::queue_ptr;
 
-  explicit publishing_queue_backend(coordinator* ctx, queue_ptr queue)
+  explicit publishing_queue_backend(flow::coordinator* ctx, queue_ptr queue)
     : super(ctx, defaults::flow::batch_size), queue_(std::move(queue)) {
     // nop
   }
 
-  void on_notify() override {
+  void on_event() override {
     this->try_push();
   }
 
@@ -122,7 +126,7 @@ public:
     this->abort(reason);
   }
 
-  void on_request(subscriber_base* sink, size_t n) override {
+  void on_request(flow::observer_base* sink, size_t n) override {
     super::on_request(sink, n);
   }
 
@@ -151,28 +155,32 @@ private:
   queue_ptr queue_;
 };
 
-/// Creates a new @ref publishing_queue as well a @ref flow::publisher that
-/// reads items from the queue and makes them available to subscribers. The
-/// publisher runs transparently on a worker actor in the background. The
-/// producer that pushes to the @ref publishing_queue as well as any number of
-/// @ref flow::subscriber instances runs asynchronously to the worker actor.
-/// @returns A pointer to the new @ref publishing_queue as well as a
-///          @ref flow::async::publisher that wraps the created
-///          @ref flow::publisher.
+} // namespace caf::detail
+
+namespace caf::async {
+
+/// Creates a new @ref publishing_queue as well a @ref flow::publisher connected
+/// to it. Pushing to the queue makes items available to observers of the
+/// publisher. The publisher runs transparently on a worker actor in the
+/// background. The producer that pushes to the @ref publishing_queue as well as
+/// any number of @ref flow::observer instances runs asynchronously to the
+/// worker actor.
+/// @returns An intrusive pointer to the new @ref publishing_queue as well as a
+///          connected @ref async::publisher.
 /// @relates publishing_queue
 template <class T, class WorkerImpl = event_based_actor, class Context>
 auto make_publishing_queue(Context& ctx, size_t capacity) {
   using impl = publishing_queue<T>;
-  using backend_impl = publishing_queue_backend<T>;
+  using backend_impl = detail::publishing_queue_backend<T>;
   auto [self, launch] = ctx.template make_flow_coordinator<WorkerImpl>();
   auto queue = std::make_shared<typename impl::queue>(capacity);
   auto backend = make_counted<backend_impl>(self, queue);
   auto notify_hdl = self->to_async_notifiable(backend);
-  auto pub_hdl = self->to_async_publisher(backend);
+  auto pub = self->to_async_publisher(flow::observable<T>{std::move(backend)});
   launch();
   return std::make_pair(make_counted<impl>(std::move(queue),
                                            std::move(notify_hdl)),
-                        std::move(pub_hdl));
+                        std::move(pub));
 }
 
-} // namespace caf::flow::async
+} // namespace caf::async

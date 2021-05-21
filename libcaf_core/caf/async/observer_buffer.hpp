@@ -8,18 +8,18 @@
 #include <mutex>
 #include <tuple>
 
+#include "caf/async/batch.hpp"
 #include "caf/defaults.hpp"
-#include "caf/flow/batch.hpp"
-#include "caf/flow/subscriber.hpp"
+#include "caf/flow/observer.hpp"
 #include "caf/flow/subscription.hpp"
 
-namespace caf::flow {
+namespace caf::async {
 
-/// Base class for buffered consumption of published items.
+/// Enables buffered consumption of published items.
 template <class T>
-class poll_subscriber : public subscriber<T> {
+class observer_buffer : public flow::observer<T>::impl {
 public:
-  poll_subscriber() {
+  observer_buffer() {
     // nop
   }
 
@@ -55,8 +55,8 @@ public:
       wakeup(guard);
   }
 
-  void on_subscribe(subscription_ptr sub) override {
-    CAF_ASSERT(sub != nullptr);
+  void on_attach(flow::subscription sub) override {
+    CAF_ASSERT(sub.valid());
     std::unique_lock guard{mtx_};
     sub_ = std::move(sub);
     init(guard);
@@ -82,7 +82,7 @@ public:
       if (++local.pos_ == local.end_) {
         std::unique_lock guard{mtx_};
         if (sub_)
-          sub_->request(local.cache_.size());
+          sub_.request(local.cache_.size());
       }
       return {res, false, nullptr};
     } else if (std::unique_lock guard{mtx_}; !batches_.empty()) {
@@ -101,6 +101,15 @@ public:
     }
   }
 
+  void dispose() override {
+    on_complete();
+  }
+
+  bool disposed() const noexcept override {
+    std::unique_lock guard{mtx_};
+    return done_;
+  }
+
 protected:
   template <class WaitFn>
   std::tuple<const T*, bool, const error*> wait_with(WaitFn wait_fn) {
@@ -109,7 +118,7 @@ protected:
       if (++local.pos_ == local.end_) {
         std::unique_lock guard{mtx_};
         if (sub_)
-          sub_->request(local.cache_.size());
+          sub_.request(local.cache_.size());
       }
       return {res, false, nullptr};
     } else {
@@ -147,14 +156,14 @@ protected:
 
   /// Protects fields that we access with both the consumer and the producer.
   mutable std::mutex mtx_;
-  subscription_ptr sub_;
+  flow::subscription sub_;
   bool done_ = false;
   error err_;
   std::list<batch> batches_;
 
 private:
   virtual void init(std::unique_lock<std::mutex>&) {
-    sub_->request(defaults::flow::buffer_size);
+    sub_.request(defaults::flow::buffer_size);
   }
 
   virtual void wakeup(std::unique_lock<std::mutex>&) {
@@ -162,4 +171,4 @@ private:
   }
 };
 
-} // namespace caf::flow
+} // namespace caf::async

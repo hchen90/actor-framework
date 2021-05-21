@@ -2,15 +2,11 @@
 // the main distribution directory for license terms and copyright or visit
 // https://github.com/actor-framework/actor-framework/blob/master/LICENSE.
 
-#include "caf/flow/subscriber.hpp"
+#include "caf/flow/subscription.hpp"
 
 namespace caf::flow {
 
-subscriber::subscriber() {
-  // nop
-}
-
-subscriber::~subscriber() {
+subscription::impl::~impl() {
   // nop
 }
 
