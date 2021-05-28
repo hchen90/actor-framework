@@ -165,6 +165,9 @@ enum class sec : uint8_t {
   connection_timeout,
   /// Attaching to an observable failed because the target is invalid.
   invalid_observable,
+  /// Signals to a component that is has been discarded by its parent or the
+  /// consumer/producer that was attached to the component.
+  discarded,
 };
 // --(rst-sec-end)--
 

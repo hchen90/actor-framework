@@ -154,6 +154,8 @@ std::string to_string(sec x) {
       return "caf::sec::connection_timeout";
     case sec::invalid_observable:
       return "caf::sec::invalid_observable";
+    case sec::discarded:
+      return "caf::sec::discarded";
   };
 }
 
@@ -365,6 +367,9 @@ bool from_string(string_view in, sec& out) {
   } else if (in == "caf::sec::invalid_observable") {
     out = sec::invalid_observable;
     return true;
+  } else if (in == "caf::sec::discarded") {
+    out = sec::discarded;
+    return true;
   } else {
     return false;
   }
@@ -445,6 +450,7 @@ bool from_integer(std::underlying_type_t<sec> in,
     case sec::broken_promise:
     case sec::connection_timeout:
     case sec::invalid_observable:
+    case sec::discarded:
       out = result;
       return true;
   };
