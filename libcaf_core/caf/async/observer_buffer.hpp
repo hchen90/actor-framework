@@ -28,7 +28,7 @@ public:
     if (!done_) {
       sub_ = nullptr;
       done_ = true;
-      wakeup(guard);
+      deinit(guard);
     }
   }
 
@@ -38,7 +38,7 @@ public:
       sub_ = nullptr;
       done_ = true;
       err_ = what;
-      wakeup(guard);
+      deinit(guard);
     }
   }
 
@@ -164,6 +164,10 @@ protected:
 private:
   virtual void init(std::unique_lock<std::mutex>&) {
     sub_.request(defaults::flow::buffer_size);
+  }
+
+  virtual void deinit(std::unique_lock<std::mutex>& guard) {
+    wakeup(guard);
   }
 
   virtual void wakeup(std::unique_lock<std::mutex>&) {
