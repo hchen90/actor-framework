@@ -45,6 +45,10 @@ public:
   public:
     /// Adds a new observer.
     virtual void subscribe(flow::observer<T> who) = 0;
+
+    publisher as_publisher() noexcept {
+      return publisher{intrusive_ptr<impl>(this)};
+    }
   };
 
   explicit publisher(intrusive_ptr<impl> pimpl) noexcept

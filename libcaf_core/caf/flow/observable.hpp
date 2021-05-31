@@ -52,6 +52,10 @@ public:
     disposable as_disposable() noexcept {
       return disposable{intrusive_ptr<disposable::impl>{this}};
     }
+
+    observable as_observable() noexcept {
+      return observable{intrusive_ptr<impl>(this)};
+    }
   };
 
   explicit observable(intrusive_ptr<impl> pimpl) noexcept
