@@ -81,6 +81,9 @@ public:
   [[nodiscard]] generation<container_source<Container>>
   from_container(Container values) const;
 
+  template <class T>
+  [[nodiscard]] auto just(T value) const;
+
 private:
   explicit observable_builder(coordinator* ctx) : ctx_(ctx) {
     // nop
@@ -176,6 +179,11 @@ public:
                                                      std::move(on_complete));
   }
 
+  template <class F>
+  auto flat_map(F f) && {
+    return std::move(*this).as_observable().flat_map(std::move(f));
+  }
+
   observable<output_type> as_observable() && {
     auto pimpl = make_counted<impl>(ctx_, std::move(gen_), std::move(steps_));
     return observable<output_type>{std::move(pimpl)};
@@ -210,6 +218,13 @@ template <class Container>
 generation<container_source<Container>>
 observable_builder::from_container(Container values) const {
   return {ctx_, container_source<Container>{std::move(values)}};
+}
+
+// -- observable_builder::just -------------------------------------------------
+
+template <class T>
+auto observable_builder::just(T value) const {
+  return repeat(std::move(value)).take(1);
 }
 
 } // namespace caf::flow
