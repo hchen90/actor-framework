@@ -5,11 +5,12 @@
 #pragma once
 
 #include "caf/actor.hpp"
+#include "caf/detail/core_export.hpp"
 #include "caf/flow/subscription.hpp"
 
 namespace caf::detail {
 
-class subscription_decorator : public flow::subscription::impl {
+class CAF_CORE_EXPORT subscription_decorator : public flow::subscription::impl {
 public:
   subscription_decorator(actor hdl, flow::subscription decorated);
 
