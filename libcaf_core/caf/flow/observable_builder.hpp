@@ -127,7 +127,9 @@ private:
 // -- generation ---------------------------------------------------------------
 
 template <class Generator, class... Steps>
-class generation {
+class generation final
+  : public observable_def<
+      transform_processor_output_type_t<Generator, Steps...>> {
 public:
   using output_type = transform_processor_output_type_t<Generator, Steps...>;
 
@@ -192,43 +194,9 @@ public:
     return std::move(*this).transform(map_step<Fn>{std::move(fn)});
   }
 
-  template <class OnNext>
-  disposable for_each(OnNext on_next) && {
-    return std::move(*this).as_observable().for_each(std::move(on_next));
-  }
-
-  template <class OnNext, class OnError>
-  disposable for_each(OnNext on_next, OnError on_error) && {
-    return std::move(*this).as_observable().for_each(std::move(on_next),
-                                                     std::move(on_error));
-  }
-
-  template <class OnNext, class OnError, class OnComplete>
-  disposable
-  for_each(OnNext on_next, OnError on_error, OnComplete on_complete) && {
-    return std::move(*this).as_observable().for_each(std::move(on_next),
-                                                     std::move(on_error),
-                                                     std::move(on_complete));
-  }
-
-  template <class F>
-  auto flat_map(F f) && {
-    return std::move(*this).as_observable().flat_map(std::move(f));
-  }
-
-  observable<output_type> as_observable() && {
+  observable<output_type> as_observable() && override {
     auto pimpl = make_counted<impl>(ctx_, std::move(gen_), std::move(steps_));
     return observable<output_type>{std::move(pimpl)};
-  }
-
-  void attach(observer<output_type> what) && {
-    std::move(*this).as_observable().attach(std::move(what));
-  }
-
-  template <class Impl, class... Ts>
-  auto observe_with_new(Ts&&... args) && {
-    return std::move(*this).as_observable().template observe_with_new<Impl>(
-      std::forward<Ts>(args)...);
   }
 
 private:

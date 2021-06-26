@@ -165,6 +165,52 @@ private:
   intrusive_ptr<impl> pimpl_;
 };
 
+/// Base type for classes that represent a definition of an `observable` which
+/// has not yet been converted to an actual `observable`.
+template <class T>
+class observable_def {
+public:
+  virtual ~observable_def() = default;
+
+  template <class OnNext>
+  auto for_each(OnNext on_next) && {
+    return lift().for_each(std::move(on_next));
+  }
+
+  template <class OnNext, class OnError>
+  auto for_each(OnNext on_next, OnError on_error) && {
+    return lift().for_each(std::move(on_next), std::move(on_error));
+  }
+
+  template <class OnNext, class OnError, class OnComplete>
+  auto for_each(OnNext on_next, OnError on_error, OnComplete on_complete) && {
+    return lift().for_each(std::move(on_next), std::move(on_error),
+                           std::move(on_complete));
+  }
+
+  template <class F>
+  auto flat_map(F f) && {
+    return lift().flat_map(std::move(f));
+  }
+
+  void attach(observer<T> what) && {
+    lift().attach(std::move(what));
+  }
+
+  template <class Impl, class... Ts>
+  auto observe_with_new(Ts&&... args) && {
+    return std::move(*this).as_observable().template observe_with_new<Impl>(
+      std::forward<Ts>(args)...);
+  }
+
+  virtual observable<T> as_observable() && = 0;
+
+private:
+  decltype(auto) lift() {
+    return std::move(*this).as_observable();
+  }
+};
+
 template <class In, class Out>
 class processor {
 public:
@@ -579,7 +625,8 @@ using transform_processor_output_type_t =
 /// A special type of observer that applies a series of transformation steps to
 /// its input before broadcasting the result as output.
 template <class Step, class... Steps>
-class transformation {
+class transformation final
+  : public observable_def<transform_processor_output_type_t<Step, Steps...>> {
 public:
   using input_type = typename Step::input_type;
 
@@ -645,38 +692,10 @@ public:
     return std::move(*this).transform(map_step<Fn>{std::move(fn)});
   }
 
-  template <class OnNext>
-  disposable for_each(OnNext on_next) && {
-    return std::move(*this).as_observable().for_each(std::move(on_next));
-  }
-
-  template <class OnNext, class OnError>
-  disposable for_each(OnNext on_next, OnError on_error) && {
-    return std::move(*this).as_observable().for_each(std::move(on_next),
-                                                     std::move(on_error));
-  }
-
-  template <class OnNext, class OnError, class OnComplete>
-  disposable
-  for_each(OnNext on_next, OnError on_error, OnComplete on_complete) && {
-    return std::move(*this).as_observable().for_each(std::move(on_next),
-                                                     std::move(on_error),
-                                                     std::move(on_complete));
-  }
-
-  template <class F>
-  auto flat_map(F f) && {
-    return std::move(*this).as_observable().flat_map(std::move(f));
-  }
-
-  observable<output_type> as_observable() && {
+  observable<output_type> as_observable() && override {
     auto pimpl = make_counted<impl>(source_.ptr()->ctx(), std::move(steps_));
     source_.attach(observer<input_type>{pimpl});
     return observable<output_type>{std::move(pimpl)};
-  }
-
-  void attach(observer<output_type> what) && {
-    std::move(*this).as_observable().attach(std::move(what));
   }
 
 private:
