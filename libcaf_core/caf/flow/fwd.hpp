@@ -21,6 +21,9 @@ class observable_base;
 using observable_base_ptr = intrusive_ptr<observable_base>;
 
 template <class T>
+class single;
+
+template <class T>
 class observer;
 
 template <class T>
@@ -57,6 +60,11 @@ struct is_observable<generation<Generator, Steps...>> {
 
 template <class In, class Out>
 struct is_observable<processor<In, Out>> {
+  static constexpr bool value = true;
+};
+
+template <class T>
+struct is_observable<single<T>> {
   static constexpr bool value = true;
 };
 

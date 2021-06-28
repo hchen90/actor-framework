@@ -294,6 +294,7 @@ caf_add_component(
     flow.flat_map
     flow.for_each
     flow.merge
+    flow.single
     function_view
     fused_downstream_manager
     handles
@@ -336,6 +337,7 @@ caf_add_component(
     policy.select_all
     policy.select_any
     request_timeout
+    response_handle
     response_promise
     result
     save_inspector

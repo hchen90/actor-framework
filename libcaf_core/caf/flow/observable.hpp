@@ -35,7 +35,7 @@ class observable {
 public:
   using output_type = T;
 
-  /// Internal impl of an `observable`.
+  /// Internal interface of an `observable`.
   class impl : public observable_base, public disposable::impl {
   public:
     using super = observable_base;

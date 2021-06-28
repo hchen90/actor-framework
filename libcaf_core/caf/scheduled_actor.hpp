@@ -80,6 +80,11 @@ class CAF_CORE_EXPORT scheduled_actor : public local_actor,
                                         public non_blocking_actor_base,
                                         public flow::coordinator {
 public:
+  // -- friends ----------------------------------------------------------------
+
+  template <class, class>
+  friend class response_handle;
+
   // -- nested enums -----------------------------------------------------------
 
   /// Categorizes incoming messages.
@@ -768,7 +773,18 @@ private:
     }
   }
 
-  // -- scheduling of caf::flow events -----------------------------------------
+  // -- caf::flow bindings -----------------------------------------------------
+
+  template <class T, class Policy>
+  flow::single<T> single_from_response(Policy& policy) {
+    static_assert(
+      flow::has_impl_include_v<detail::left_t<scheduled_actor, Policy>>,
+      "include 'caf/scheduled_actor/flow.hpp' for this method");
+    return single_from_response_impl<T>(policy);
+  }
+
+  template <class T, class Policy>
+  flow::single<T> single_from_response_impl(Policy& policy);
 
   template <class T>
   flow::observable<T> observe_impl(async::publisher<T> source);

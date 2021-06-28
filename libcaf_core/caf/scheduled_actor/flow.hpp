@@ -13,6 +13,7 @@
 #include "caf/flow/observable.hpp"
 #include "caf/flow/observable_builder.hpp"
 #include "caf/flow/observer.hpp"
+#include "caf/flow/single.hpp"
 #include "caf/scheduled_actor.hpp"
 
 namespace caf::detail {
@@ -205,6 +206,24 @@ scheduled_actor::to_async_publisher_impl(Observable source) {
   using proxy_type = detail::publisher_proxy<output_type>;
   auto ptr = make_counted<proxy_type>(actor_cast<actor>(this), std::move(obs));
   return async::publisher<output_type>{std::move(ptr)};
+}
+
+template <class T, class Policy>
+flow::single<T> scheduled_actor::single_from_response_impl(Policy& policy) {
+  using output_type = T;
+  using impl_type = typename flow::single<output_type>::impl;
+  auto ptr = make_counted<impl_type>(this);
+  policy.then(
+    this,
+    [this, ptr](T& val) {
+      ptr->set_value(std::move(val));
+      handle_flow_events();
+    },
+    [this, ptr](error& err) {
+      ptr->set_error(std::move(err));
+      handle_flow_events();
+    });
+  return flow::single<output_type>{std::move(ptr)};
 }
 
 } // namespace caf
