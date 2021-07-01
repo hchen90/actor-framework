@@ -110,6 +110,9 @@ public:
   template <class F>
   auto flat_map(F f);
 
+  template <class F>
+  auto concat_map(F f);
+
   template <class Observer, class = std::enable_if_t<is_observer_v<Observer>>>
   auto observe_with(Observer hdl) {
     attach(hdl.as_subscriber());
@@ -191,6 +194,11 @@ public:
   template <class F>
   auto flat_map(F f) && {
     return lift().flat_map(std::move(f));
+  }
+
+  template <class F>
+  auto concat_map(F f) && {
+    return lift().concat_map(std::move(f));
   }
 
   void attach(observer<T> what) && {
@@ -296,6 +304,7 @@ public:
   };
 
   explicit buffered_observable_impl(coordinator* ctx)
+
     : super(ctx), desired_capacity_(defaults::flow::buffer_size) {
     buf_.reserve(desired_capacity_);
   }
@@ -781,6 +790,10 @@ public:
 
   using super::super;
 
+  void concat_mode(bool new_value) {
+    flags_.concat_mode = new_value;
+  }
+
   class forwarder;
 
   friend class forwarder;
@@ -811,7 +824,7 @@ public:
     void on_attach(subscription new_sub) override {
       if (!sub) {
         sub = std::move(new_sub);
-        sub.request(defaults::flow::buffer_size);
+        parent->forwarder_attached(this, sub);
       } else {
         new_sub.cancel();
       }
@@ -876,20 +889,20 @@ public:
   }
 
   void delay_error(bool value) {
-    flags.delay_error = value;
+    flags_.delay_error = value;
   }
 
   void shutdown_on_last_complete(bool value) {
-    flags.shutdown_on_last_complete = value;
+    flags_.shutdown_on_last_complete = value;
   }
 
   void on_error(const error& reason) {
-    if (!flags.delay_error) {
+    if (!flags_.delay_error) {
       abort(reason);
       return;
     }
-    if (!delayed_error)
-      delayed_error = reason;
+    if (!delayed_error_)
+      delayed_error_ = reason;
   }
 
 protected:
@@ -925,13 +938,18 @@ private:
     this->try_push();
   }
 
+  void forwarder_attached(forwarder* ptr, subscription& sub) {
+    if (!flags_.concat_mode || (!forwarders_.empty() && forwarders_[0] == ptr))
+      sub.request(defaults::flow::buffer_size);
+  }
+
   void forwarder_failed(forwarder* ptr, const error& reason) {
-    if (!flags.delay_error) {
+    if (!flags_.delay_error) {
       abort(reason);
       return;
     }
-    if (!delayed_error)
-      delayed_error = reason;
+    if (!delayed_error_)
+      delayed_error_ = reason;
     forwarder_completed(ptr);
   }
 
@@ -940,11 +958,17 @@ private:
     auto i = std::find_if(forwarders_.begin(), forwarders_.end(), is_ptr);
     if (i != forwarders_.end()) {
       forwarders_.erase(i);
-      if (forwarders_.empty() && flags.shutdown_on_last_complete) {
-        if (delayed_error)
-          this->abort(delayed_error);
-        else
-          this->shutdown();
+      if (forwarders_.empty()) {
+        if (flags_.shutdown_on_last_complete) {
+          if (delayed_error_)
+            this->abort(delayed_error_);
+          else
+            this->shutdown();
+        }
+      } else if (flags_.concat_mode) {
+        if (auto& sub = forwarders_.front()->sub)
+          sub.request(defaults::flow::buffer_size);
+        // else: not attached yet, so forwarder_attached will call sub.request
       }
     }
   }
@@ -965,16 +989,20 @@ private:
   struct flags_t {
     bool delay_error : 1;
     bool shutdown_on_last_complete : 1;
+    bool concat_mode : 1;
 
-    flags_t() : delay_error(false), shutdown_on_last_complete(true) {
+    flags_t()
+      : delay_error(false),
+        shutdown_on_last_complete(true),
+        concat_mode(false) {
       // nop
     }
   };
 
   std::vector<input_t> inputs_;
   std::vector<fwd_ptr> forwarders_;
-  flags_t flags;
-  error delayed_error;
+  flags_t flags_;
+  error delayed_error_;
 };
 
 template <class T>
@@ -1043,6 +1071,10 @@ public:
     return merger_->as_observable();
   }
 
+  auto& merger_ptr() {
+    return merger_;
+  }
+
 private:
   subscription sub_;
   F map_;
@@ -1057,6 +1089,21 @@ auto observable<T>::flat_map(F f) {
                 "mapping functions must return an observable");
   using impl_t = flat_map_observer_impl<T, F>;
   auto obs = make_counted<impl_t>(pimpl_->ctx(), std::move(f));
+  pimpl_->attach(obs->as_observer());
+  return obs->merger();
+}
+
+// -- observable::concat_map ---------------------------------------------------
+
+template <class T>
+template <class F>
+auto observable<T>::concat_map(F f) {
+  using f_res = decltype(f(std::declval<const T&>()));
+  static_assert(is_observable_v<f_res>,
+                "mapping functions must return an observable");
+  using impl_t = flat_map_observer_impl<T, F>;
+  auto obs = make_counted<impl_t>(pimpl_->ctx(), std::move(f));
+  obs->merger_ptr()->concat_mode(true);
   pimpl_->attach(obs->as_observer());
   return obs->merger();
 }
