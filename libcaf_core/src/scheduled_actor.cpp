@@ -232,6 +232,13 @@ bool scheduled_actor::cleanup(error&& fail_state, execution_unit* host) {
   stream_managers_.clear();
   pending_stream_managers_.clear();
   get_downstream_queue().cleanup();
+  // Cancel any active flow.
+  while (!watched_disposables_.empty()) {
+    for (auto& ptr : watched_disposables_)
+      ptr.dispose();
+    watched_disposables_.clear();
+    handle_flow_events();
+  }
   // Clear mailbox.
   if (!mailbox_.closed()) {
     mailbox_.close();
@@ -284,6 +291,8 @@ resumable::resume_result scheduled_actor::resume(execution_unit* ctx,
         tout = advance_streams(clock().now());
       set_stream_timeout(tout);
     }
+    // Make sure we process flow events at least once.
+    handle_flow_events();
   };
   // Callback for handling urgent and normal messages.
   auto handle_async = [this, max_throughput, &consumed](mailbox_element& x) {
@@ -433,6 +442,7 @@ resumable::resume_result scheduled_actor::resume(execution_unit* ctx,
       return resumable::done;
     if (auto now = clock().now(); now >= tout)
       tout = advance_streams(now);
+    handle_flow_events();
   }
   CAF_LOG_DEBUG("max throughput reached");
   reset_timeouts_if_needed();
@@ -453,8 +463,10 @@ proxy_registry* scheduled_actor::proxy_registry_ptr() {
 void scheduled_actor::quit(error x) {
   CAF_LOG_TRACE(CAF_ARG(x));
   // Make sure repeated calls to quit don't do anything.
-  if (getf(is_shutting_down_flag))
+  if (getf(is_shutting_down_flag)) {
+    CAF_LOG_DEBUG("already shutting down");
     return;
+  }
   // Mark this actor as about-to-die.
   setf(is_shutting_down_flag);
   // Store shutdown reason.
@@ -469,6 +481,13 @@ void scheduled_actor::quit(error x) {
   set_error_handler(silently_ignore<error>);
   // Drop future messages and produce sec::request_receiver_down for requests.
   set_default_handler(drop_after_quit);
+  // Cancel any active flow.
+  while (!watched_disposables_.empty()) {
+    for (auto& ptr : watched_disposables_)
+      ptr.dispose();
+    watched_disposables_.clear();
+    handle_flow_events();
+  }
   // Tell all streams to shut down.
   std::vector<stream_manager_ptr> managers;
   for (auto& smm : {stream_managers_, pending_stream_managers_})
@@ -981,12 +1000,6 @@ bool scheduled_actor::finalize() {
     return false;
   CAF_LOG_DEBUG("actor has no behavior and is ready for cleanup");
   CAF_ASSERT(!has_behavior());
-  while (!watched_disposables_.empty()) {
-    for (auto& ptr : watched_disposables_)
-      ptr.dispose();
-    watched_disposables_.clear();
-    handle_flow_events();
-  }
   on_exit();
   bhvr_stack_.cleanup();
   cleanup(std::move(fail_state_), context());
