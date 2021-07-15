@@ -393,6 +393,10 @@ public:
 
   /// Tries to push data from the buffer downstream.
   void try_push() {
+    if (!batch_.empty()) {
+      // Can only be true if a sink calls try_push in on_next.
+      return;
+    }
     size_t batch_size = std::min(desired_capacity_, defaults::flow::batch_size);
     while (max_demand_ > 0) {
       // Try to ship full batches.
@@ -400,19 +404,22 @@ public:
         pull(batch_size - buf_.size());
       auto n = std::min(max_demand_, buf_.size());
       if (n == 0)
-        return;
-      auto items = span<const T>{buf_.data(), n};
+        break;
+      batch_.assign(std::make_move_iterator(buf_.begin()),
+                    std::make_move_iterator(buf_.begin() + n));
+      buf_.erase(buf_.begin(), buf_.begin() + n);
+      auto items = span<const T>{batch_};
       for (auto& out : outputs_) {
         out.demand -= n;
         out.sink.on_next(items);
       }
       max_demand_ -= n;
-      buf_.erase(buf_.begin(), buf_.begin() + n);
+      batch_.clear();
       if (done()) {
         for (auto& out : outputs_)
           out.sink.on_complete();
         outputs_.clear();
-        return;
+        break;
       }
     }
   }
@@ -440,6 +447,9 @@ protected:
   bool completed_ = false;
   size_t max_demand_ = 0;
   std::vector<output_t> outputs_;
+
+  /// Stores items right before calling on_next on the sinks.
+  std::vector<T> batch_;
 
 private:
   virtual void pull(size_t) {
@@ -495,11 +505,13 @@ public:
   void on_complete() override {
     sub_ = nullptr;
     this->shutdown();
+    do_on_complete();
   }
 
   void on_error(const error& what) override {
     sub_ = nullptr;
     this->abort(what);
+    do_on_error(what);
   }
 
   void on_attach(subscription sub) override {
@@ -513,11 +525,14 @@ public:
   }
 
   void dispose() override {
-    if (sub_) {
-      sub_.cancel();
-      sub_ = nullptr;
+    if (!this->completed_) {
+      if (sub_) {
+        sub_.cancel();
+        sub_ = nullptr;
+      }
+      super::dispose();
+      do_on_complete();
     }
-    super::dispose();
   }
 
   bool disposed() const noexcept override {
@@ -597,6 +612,14 @@ private:
   }
 
   virtual void do_on_next(span<const In> items) = 0;
+
+  virtual void do_on_complete() {
+    // nop
+  }
+
+  virtual void do_on_error(const error&) {
+    // nop
+  }
 };
 
 /// Broadcasts its input to all observers without modifying it.
@@ -612,6 +635,9 @@ private:
     this->append_to_buf(items.begin(), items.end());
   }
 };
+
+template <class T>
+using broadcaster_impl_ptr = intrusive_ptr<broadcaster_impl<T>>;
 
 // -- transformation -----------------------------------------------------------
 
@@ -660,6 +686,22 @@ public:
         for (auto&& item : items)
           if (!step.on_next(item, steps..., term))
             return;
+      };
+      std::apply(fn, steps);
+    }
+
+    void do_on_complete() override {
+      auto fn = [this](auto& step, auto&... steps) {
+        term_step<output_type> term{this};
+        step.on_complete(steps..., term);
+      };
+      std::apply(fn, steps);
+    }
+
+    void do_on_error(const error& what) override {
+      auto fn = [this, &what](auto& step, auto&... steps) {
+        term_step<output_type> term{this};
+        step.on_error(what, steps..., term);
       };
       std::apply(fn, steps);
     }
@@ -1011,7 +1053,7 @@ using merger_impl_ptr = intrusive_ptr<merger_impl<T>>;
 template <class T, class F>
 class flat_map_observer_impl : public observer<T>::impl {
 public:
-  using mapped_type = decltype((std::declval<F&>())(std::declval<const T&>()));
+  using mapped_type = decltype((std::declval<F&>()) (std::declval<const T&>()));
 
   using inner_type = typename mapped_type::output_type;
 
