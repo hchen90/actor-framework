@@ -291,8 +291,6 @@ resumable::resume_result scheduled_actor::resume(execution_unit* ctx,
         tout = advance_streams(clock().now());
       set_stream_timeout(tout);
     }
-    // Make sure we process flow events at least once.
-    handle_flow_events();
   };
   // Callback for handling urgent and normal messages.
   auto handle_async = [this, max_throughput, &consumed](mailbox_element& x) {
@@ -442,7 +440,6 @@ resumable::resume_result scheduled_actor::resume(execution_unit* ctx,
       return resumable::done;
     if (auto now = clock().now(); now >= tout)
       tout = advance_streams(now);
-    handle_flow_events();
   }
   CAF_LOG_DEBUG("max throughput reached");
   reset_timeouts_if_needed();
@@ -994,8 +991,9 @@ bool scheduled_actor::finalize() {
         ++i;
     }
   }
-  // An actor is considered alive as long as it has a behavior and didn't set
-  // the terminated flag.
+  // An actor is considered alive as long as it has a behavior, didn't set
+  // the terminated flag and has no watched flows remaining.
+  handle_flow_events();
   if (alive())
     return false;
   CAF_LOG_DEBUG("actor has no behavior and is ready for cleanup");
@@ -1324,7 +1322,7 @@ void scheduled_actor::watch(disposable obj) {
 }
 
 void scheduled_actor::handle_flow_events() {
-  while (!flow_events_.empty()) {
+  if (!flow_events_.empty()) {
     auto index = size_t{0};
     do {
       auto ev = std::move(flow_events_[index]);
@@ -1339,6 +1337,7 @@ void scheduled_actor::handle_flow_events() {
     } while (index < flow_events_.size());
     flow_events_.clear();
   }
+  drop_disposed_flows();
 }
 
 void scheduled_actor::drop_disposed_flows() {
