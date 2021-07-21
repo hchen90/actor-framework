@@ -690,6 +690,10 @@ public:
 
   void handle_flow_events();
 
+  std::vector<disposable> watched_disposables() const {
+    return watched_disposables_;
+  }
+
   /// @endcond
 
 protected:

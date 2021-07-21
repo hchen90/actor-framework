@@ -35,4 +35,8 @@ void subscription_decorator::reset() {
   }
 }
 
+bool subscription_decorator::disposed() const noexcept {
+  return hdl_ == nullptr;
+}
+
 } // namespace caf::detail

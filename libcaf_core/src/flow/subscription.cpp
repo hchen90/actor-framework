@@ -10,4 +10,8 @@ subscription::impl::~impl() {
   // nop
 }
 
+void subscription::impl::dispose() {
+  cancel();
+}
+
 } // namespace caf::flow

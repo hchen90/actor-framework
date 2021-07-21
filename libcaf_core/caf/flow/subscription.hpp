@@ -7,6 +7,7 @@
 #include <cstddef>
 
 #include "caf/detail/core_export.hpp"
+#include "caf/disposable.hpp"
 #include "caf/intrusive_ptr.hpp"
 #include "caf/ref_counted.hpp"
 
@@ -18,7 +19,7 @@ public:
   // -- nested types -----------------------------------------------------------
 
   /// Internal impl of a `disposable`.
-  class impl : public virtual ref_counted {
+  class impl : public disposable::impl {
   public:
     ~impl() override;
 
@@ -28,6 +29,8 @@ public:
 
     /// Signals demand for `n` more items.
     virtual void request(size_t n) = 0;
+
+    void dispose() final;
   };
 
   // -- constructors, destructors, and assignment operators --------------------
@@ -86,8 +89,20 @@ public:
     return pimpl_.get();
   }
 
+  intrusive_ptr<impl> as_intrusive_ptr() const& noexcept {
+    return pimpl_;
+  }
+
   intrusive_ptr<impl>&& as_intrusive_ptr() && noexcept {
     return std::move(pimpl_);
+  }
+
+  disposable as_disposable() const& noexcept {
+    return disposable{pimpl_};
+  }
+
+  disposable as_disposable() && noexcept {
+    return disposable{std::move(pimpl_)};
   }
 
   // -- swapping ---------------------------------------------------------------

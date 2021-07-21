@@ -20,6 +20,8 @@ public:
 
   void request(size_t n) override;
 
+  bool disposed() const noexcept override;
+
 private:
   void reset();
 

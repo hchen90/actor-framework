@@ -35,6 +35,8 @@ public:
 
     void cancel() final;
 
+    bool disposed() const noexcept final;
+
     auto* ctx() const noexcept {
       return ctx_;
     }

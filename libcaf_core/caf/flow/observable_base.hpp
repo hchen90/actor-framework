@@ -5,6 +5,7 @@
 #pragma once
 
 #include "caf/detail/core_export.hpp"
+#include "caf/disposable.hpp"
 #include "caf/flow/fwd.hpp"
 #include "caf/fwd.hpp"
 #include "caf/intrusive_ptr.hpp"
@@ -31,7 +32,7 @@ public:
   }
 
 protected:
-  void do_attach(observer_base* sink);
+  disposable do_attach(observer_base* sink);
 
   coordinator* ctx_;
 };

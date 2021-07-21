@@ -112,4 +112,80 @@ struct map_step {
   }
 };
 
+template <class T, class Fn>
+struct on_complete_step {
+  using input_type = T;
+
+  using output_type = T;
+
+  Fn fn;
+
+  template <class Next, class... Steps>
+  bool on_next(const input_type& item, Next& next, Steps&... steps) {
+    return next.on_next(item, steps...);
+  }
+
+  template <class Next, class... Steps>
+  void on_complete(Next& next, Steps&... steps) {
+    fn();
+    next.on_complete(steps...);
+  }
+
+  template <class Next, class... Steps>
+  void on_error(const error& what, Next& next, Steps&... steps) {
+    next.on_error(what, steps...);
+  }
+};
+
+template <class T, class Fn>
+struct on_error_step {
+  using input_type = T;
+
+  using output_type = T;
+
+  Fn fn;
+
+  template <class Next, class... Steps>
+  bool on_next(const input_type& item, Next& next, Steps&... steps) {
+    return next.on_next(item, steps...);
+  }
+
+  template <class Next, class... Steps>
+  void on_complete(Next& next, Steps&... steps) {
+    next.on_complete(steps...);
+  }
+
+  template <class Next, class... Steps>
+  void on_error(const error& what, Next& next, Steps&... steps) {
+    fn();
+    next.on_error(what, steps...);
+  }
+};
+
+template <class T, class Fn>
+struct finally_step {
+  using input_type = T;
+
+  using output_type = T;
+
+  Fn fn;
+
+  template <class Next, class... Steps>
+  bool on_next(const input_type& item, Next& next, Steps&... steps) {
+    return next.on_next(item, steps...);
+  }
+
+  template <class Next, class... Steps>
+  void on_complete(Next& next, Steps&... steps) {
+    fn();
+    next.on_complete(steps...);
+  }
+
+  template <class Next, class... Steps>
+  void on_error(const error& what, Next& next, Steps&... steps) {
+    fn();
+    next.on_error(what, steps...);
+  }
+};
+
 } // namespace caf::flow

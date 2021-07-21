@@ -19,13 +19,21 @@ observable_builder coordinator::make_observable() {
 
 void coordinator::subscription_impl::request(size_t n) {
   CAF_ASSERT(n != 0);
-  ctx_->dispatch_request(src_.get(), snk_.get(), n);
+  if (src_) {
+    ctx_->dispatch_request(src_.get(), snk_.get(), n);
+  }
 }
 
 void coordinator::subscription_impl::cancel() {
-  ctx_->dispatch_cancel(src_.get(), snk_.get());
-  src_.reset();
-  snk_.reset();
+  if (src_) {
+    ctx_->dispatch_cancel(src_.get(), snk_.get());
+    src_.reset();
+    snk_.reset();
+  }
+}
+
+bool coordinator::subscription_impl::disposed() const noexcept {
+  return src_ == nullptr;
 }
 
 } // namespace caf::flow

@@ -47,7 +47,7 @@ public:
     }
 
     /// Attaches a new observer.
-    virtual void attach(observer<T> what) = 0;
+    virtual disposable attach(observer<T> what) = 0;
 
     disposable as_disposable() noexcept {
       return disposable{intrusive_ptr<disposable::impl>{this}};
@@ -79,11 +79,13 @@ public:
   }
 
   /// @copydoc impl::attach
-  void attach(observer<T> what) {
-    if (pimpl_)
-      pimpl_->attach(std::move(what));
-    else
+  disposable attach(observer<T> what) {
+    if (pimpl_) {
+      return pimpl_->attach(std::move(what));
+    } else {
       what.on_error(make_error(sec::invalid_observable));
+      return disposable{};
+    }
   }
 
   /// Transforms items by applying a step function to each input.
@@ -201,8 +203,8 @@ public:
     return lift().concat_map(std::move(f));
   }
 
-  void attach(observer<T> what) && {
-    lift().attach(std::move(what));
+  disposable attach(observer<T> what) && {
+    return lift().attach(std::move(what));
   }
 
   template <class Impl, class... Ts>
@@ -334,13 +336,14 @@ public:
     }
   }
 
-  void attach(observer<T> sink) override {
+  disposable attach(observer<T> sink) override {
     if (done()) {
       sink.on_complete();
+      return disposable{};
     } else {
       max_demand_ = 0;
       outputs_.emplace_back(output_t{0u, sink});
-      super::do_attach(sink.ptr());
+      return super::do_attach(sink.ptr());
     }
   }
 
@@ -353,11 +356,14 @@ public:
   }
 
   void dispose() override {
-    completed_ = true;
-    buf_.clear();
-    for (auto& out : outputs_)
-      out.sink.on_complete();
-    outputs_.clear();
+    if (!completed_) {
+      completed_ = true;
+      buf_.clear();
+      for (auto& out : outputs_)
+        out.sink.on_complete();
+      outputs_.clear();
+      do_on_complete();
+    }
   }
 
   bool disposed() const noexcept override {
@@ -376,19 +382,25 @@ public:
 
   // Stops the source, but allows observers to still consume buffered data.
   virtual void shutdown() {
-    completed_ = true;
-    if (done()) {
-      for (auto& out : outputs_)
-        out.sink.on_complete();
-      outputs_.clear();
+    if (!completed_) {
+      completed_ = true;
+      if (done()) {
+        for (auto& out : outputs_)
+          out.sink.on_complete();
+        outputs_.clear();
+        do_on_complete();
+      }
     }
   }
 
   virtual void abort(const error& reason) {
-    completed_ = true;
-    for (auto& out : outputs_)
-      out.sink.on_error(reason);
-    outputs_.clear();
+    if (!completed_) {
+      completed_ = true;
+      for (auto& out : outputs_)
+        out.sink.on_error(reason);
+      outputs_.clear();
+      do_on_error(reason);
+    }
   }
 
   /// Tries to push data from the buffer downstream.
@@ -456,6 +468,16 @@ private:
     // Customization point for generators that can use this callback for
     // appending to the buffer.
   }
+
+  virtual void do_on_complete() {
+    // Customization point for derived types that need to perform some action on
+    // regular shutdown (or dispose).
+  }
+
+  virtual void do_on_error(const error&) {
+    // Customization point for derived types that need to perform some action on
+    // upstream errors.
+  }
 };
 
 template <class T>
@@ -505,13 +527,11 @@ public:
   void on_complete() override {
     sub_ = nullptr;
     this->shutdown();
-    do_on_complete();
   }
 
   void on_error(const error& what) override {
     sub_ = nullptr;
     this->abort(what);
-    do_on_error(what);
   }
 
   void on_attach(subscription sub) override {
@@ -531,7 +551,6 @@ public:
         sub_ = nullptr;
       }
       super::dispose();
-      do_on_complete();
     }
   }
 
@@ -613,13 +632,6 @@ private:
 
   virtual void do_on_next(span<const In> items) = 0;
 
-  virtual void do_on_complete() {
-    // nop
-  }
-
-  virtual void do_on_error(const error&) {
-    // nop
-  }
 };
 
 /// Broadcasts its input to all observers without modifying it.
@@ -741,6 +753,24 @@ public:
   template <class Fn>
   auto map(Fn fn) && {
     return std::move(*this).transform(map_step<Fn>{std::move(fn)});
+  }
+
+  template <class Fn>
+  auto do_on_complete(Fn fn) {
+    return std::move(*this) //
+      .transform(on_complete_step<output_type, Fn>{std::move(fn)});
+  }
+
+  template <class Fn>
+  auto do_on_error(Fn fn) {
+    return std::move(*this) //
+      .transform(on_error_step<output_type, Fn>{std::move(fn)});
+  }
+
+  template <class Fn>
+  auto do_finally(Fn fn) {
+    return std::move(*this) //
+      .transform(finally_step<output_type, Fn>{std::move(fn)});
   }
 
   observable<output_type> as_observable() && override {
@@ -899,18 +929,15 @@ public:
     // nop
   }
 
-  void add(observable<T> source, intrusive_ptr<forwarder> fwd) {
+  disposable add(observable<T> source, intrusive_ptr<forwarder> fwd) {
     forwarders_.emplace_back(fwd);
-    source.attach(observer<T>{std::move(fwd)});
+    return source.attach(observer<T>{std::move(fwd)});
   }
 
   template <class Observable>
-  void add(Observable source) {
-    if constexpr (std::is_same_v<Observable, observable<T>>) {
-      add(std::move(source), make_counted<forwarder>(this));
-    } else {
-      add(std::move(source).as_observable(), make_counted<forwarder>(this));
-    }
+  disposable add(Observable source) {
+    return add(std::move(source).as_observable(),
+               make_counted<forwarder>(this));
   }
 
   bool done() const noexcept override {
@@ -926,6 +953,20 @@ public:
     super::dispose();
   }
 
+  void cancel_inputs() {
+    if (!this->completed_) {
+      std::vector<fwd_ptr> fwds;
+      fwds.swap(forwarders_);
+      for (auto& fwd : fwds) {
+        if (auto& sub = fwd->sub) {
+          sub.cancel();
+          sub = nullptr;
+        }
+      }
+      this->shutdown();
+    }
+  }
+
   bool disposed() const noexcept override {
     return forwarders_.empty() && super::disposed();
   }
@@ -936,6 +977,8 @@ public:
 
   void shutdown_on_last_complete(bool value) {
     flags_.shutdown_on_last_complete = value;
+    if (value && done())
+      this->shutdown();
   }
 
   void on_error(const error& reason) {

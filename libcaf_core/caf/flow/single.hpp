@@ -32,12 +32,14 @@ public:
       // nop
     }
 
-    void attach(observer<T> what) override {
+    disposable attach(observer<T> what) override {
       if (!std::holds_alternative<error>(value_)) {
-        super::do_attach(what.ptr());
+        auto res = super::do_attach(what.ptr());
         observers_.emplace_back(std::move(what), 0u);
+        return res;
       } else {
         what.on_error(std::get<error>(value_));
+        return disposable{};
       }
     }
 
