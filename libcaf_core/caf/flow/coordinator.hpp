@@ -6,6 +6,7 @@
 
 #include <tuple>
 
+#include "caf/callback.hpp"
 #include "caf/detail/core_export.hpp"
 #include "caf/flow/fwd.hpp"
 #include "caf/flow/observable_base.hpp"
@@ -21,6 +22,11 @@ namespace caf::flow {
 /// objects since the coordinator guarantees synchronous execution.
 class CAF_CORE_EXPORT coordinator {
 public:
+  template <class>
+  friend class observable;
+
+  using action_ptr = shared_callback_ptr<void()>;
+
   class CAF_CORE_EXPORT subscription_impl : public subscription::impl {
   public:
     friend class coordinator;
@@ -55,6 +61,27 @@ public:
 
   [[nodiscard]] observable_builder make_observable();
 
+  /// Increases the reference count of the coordinator.
+  virtual void ref_coordinator() const noexcept = 0;
+
+  /// Decreases the reference count of the coordinator and destroys the object
+  /// if necessary.
+  virtual void deref_coordinator() const noexcept = 0;
+
+  /// Schedules an action for execution.
+  virtual void schedule(action_ptr action) = 0;
+
+  /// @relates coordinator
+  template <class F>
+  void schedule_fn(F&& fun) {
+    return schedule(make_shared_type_erased_callback(std::forward<F>(fun)));
+  }
+
+  //  /// Returns a decorator for `sub` that other coordinators can safely
+  //  access
+  //  /// concurrently.
+  //  virtual subscription make_async_decorator(subscription sub) = 0;
+
 private:
   /// Eventually executes `source->on_request(sink, n)`.
   /// @pre `source != nullptr`.
@@ -75,6 +102,18 @@ private:
   /// visible to outside observers.
   virtual void watch(disposable what) = 0;
 };
+
+/// @relates coordinator
+inline void intrusive_ptr_add_ref(const coordinator* p) noexcept {
+  p->ref_coordinator();
+}
+
+/// @relates coordinator
+inline void intrusive_ptr_release(const coordinator* p) noexcept {
+  p->deref_coordinator();
+}
+
+using coordinator_ptr = intrusive_ptr<coordinator>;
 
 /// Creates a new @ref coordinator with a function to set up flow logic before
 /// starting the coordinator.

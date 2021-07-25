@@ -673,6 +673,19 @@ scheduled_actor::to_async_subscription(flow::subscription sub) {
   return flow::subscription{std::move(wrapped)};
 }
 
+void scheduled_actor::ref_coordinator() const noexcept {
+  intrusive_ptr_add_ref(ctrl());
+}
+
+void scheduled_actor::deref_coordinator() const noexcept {
+  intrusive_ptr_release(ctrl());
+}
+
+void scheduled_actor::schedule(flow::coordinator::action_ptr action) {
+  enqueue(nullptr, make_message_id(),
+          make_message(detail::unsafe_flow_msg{std::move(action)}), nullptr);
+}
+
 // -- message processing -------------------------------------------------------
 
 void scheduled_actor::add_awaited_response_handler(message_id response_id,

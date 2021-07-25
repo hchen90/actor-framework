@@ -115,6 +115,11 @@ public:
   template <class F>
   auto concat_map(F f);
 
+  /// Asynchronously subscribes observers to the current observable on the
+  /// specified context.
+  template <class Context>
+  observable subscribe_on(Context* context);
+
   template <class Observer, class = std::enable_if_t<is_observer_v<Observer>>>
   auto observe_with(Observer hdl) {
     attach(hdl.as_subscriber());
@@ -130,7 +135,11 @@ public:
     return typename Impl::handle_type{std::move(ptr)};
   }
 
-  observable&& as_observable() && {
+  const observable& as_observable() const& noexcept {
+    return std::move(*this);
+  }
+
+  observable&& as_observable() && noexcept {
     return std::move(*this);
   }
 
@@ -306,7 +315,6 @@ public:
   };
 
   explicit buffered_observable_impl(coordinator* ctx)
-
     : super(ctx), desired_capacity_(defaults::flow::buffer_size) {
     buf_.reserve(desired_capacity_);
   }
@@ -412,7 +420,7 @@ public:
     size_t batch_size = std::min(desired_capacity_, defaults::flow::batch_size);
     while (max_demand_ > 0) {
       // Try to ship full batches.
-      if (batch_size > buf_.size())
+      if (batch_size > buf_.size() && !completed_)
         pull(batch_size - buf_.size());
       auto n = std::min(max_demand_, buf_.size());
       if (n == 0)
@@ -1191,6 +1199,18 @@ auto observable<T>::concat_map(F f) {
   obs->merger_ptr()->concat_mode(true);
   pimpl_->attach(obs->as_observer());
   return obs->merger();
+}
+
+// -- observable::subscribe_on -------------------------------------------------
+
+template <class T>
+template <class Context>
+observable<T> observable<T>::subscribe_on(Context* context) {
+  if (pimpl_->ctx() != context) {
+    return context->async_subscribe(*this);
+  } else {
+    return *this;
+  }
 }
 
 } // namespace caf::flow

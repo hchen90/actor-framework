@@ -515,14 +515,27 @@ public:
     return to_async_publisher_impl(std::move(source));
   }
 
+  /// Observes items from `source` on this actor.
+  /// @note Include `caf/scheduled_actor/flow.hpp` for this member function.
+  template <class T>
+  flow::observable<T> async_subscribe(flow::observable<T> source) {
+    static_assert(flow::has_impl_include_v<detail::left_t<scheduled_actor, T>>,
+                  "include 'caf/scheduled_actor/flow.hpp' for this method");
+    return async_subscribe_impl(std::move(source));
+  }
+
   /// Creates an @ref async::notifiable that other parts of the system may
   /// call asynchronously for triggering events on the `listener`.
   async::notifiable
   to_async_notifiable(async::notifiable::listener_ptr listener);
 
-  /// Returns a decorator for `sub` that other actors (or threads) can safely
-  /// access.
   flow::subscription to_async_subscription(flow::subscription sub);
+
+  void ref_coordinator() const noexcept override;
+
+  void deref_coordinator() const noexcept override;
+
+  void schedule(flow::coordinator::action_ptr action) override;
 
   // -- inbound_path management ------------------------------------------------
 
@@ -792,6 +805,9 @@ private:
 
   template <class T>
   flow::observable<T> observe_impl(async::publisher<T> source);
+
+  template <class T>
+  flow::observable<T> async_subscribe_impl(flow::observable<T> source);
 
   template <class Observable>
   async::publisher<typename Observable::output_type>

@@ -91,4 +91,10 @@ void unsafe_flow_msg::on_abort::render(std::string& str) const {
   str += ')';
 }
 
+void unsafe_flow_msg::on_action::render(std::string& str) const {
+  str += "on_action(ptr: ";
+  print(str, reinterpret_cast<intptr_t>(ptr.get()));
+  str += ')';
+}
+
 } // namespace caf::detail

@@ -11,6 +11,7 @@
 #include "caf/async/notifiable.hpp"
 #include "caf/detail/core_export.hpp"
 #include "caf/error.hpp"
+#include "caf/flow/coordinator.hpp"
 #include "caf/flow/observable_base.hpp"
 #include "caf/flow/observer_base.hpp"
 #include "caf/flow/subscription.hpp"
@@ -178,12 +179,25 @@ public:
     // nop
   }
 
+  struct on_action{
+    flow::coordinator::action_ptr ptr;
+    void exec() {
+      (*ptr)();
+    }
+    void render(std::string& str) const;
+  };
+
+  unsafe_flow_msg(flow::coordinator::action_ptr ptr)
+    : event(on_action{std::move(ptr)}) {
+    // nop
+  }
+
   unsafe_flow_msg(const unsafe_flow_msg&) = default;
   unsafe_flow_msg& operator=(const unsafe_flow_msg&) = default;
 
   using event_type
     = std::variant<nop, on_batch, on_attach, on_complete, on_error, attach,
-                   request, cancel, on_event, on_close, on_abort>;
+                   request, cancel, on_event, on_close, on_abort, on_action>;
 
   event_type event;
 

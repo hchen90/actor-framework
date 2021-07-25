@@ -296,6 +296,7 @@ caf_add_component(
     flow.flat_map
     flow.for_each
     flow.merge
+    flow.observe_on
     flow.single
     function_view
     fused_downstream_manager

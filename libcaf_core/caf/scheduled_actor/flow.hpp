@@ -196,6 +196,23 @@ flow::observable<T> scheduled_actor::observe_impl(async::publisher<T> source) {
   return flow::observable<T>{local};
 }
 
+template <class T>
+flow::observable<T>
+scheduled_actor::async_subscribe_impl(flow::observable<T> source) {
+  // Internally, we have a broadcaster called `local` that makes its inputs
+  // available to coordinated async_subscribers. The forwarder simply converts
+  // all function calls from the source to messages. After receiving the
+  // messages, the actor then calls the appropriate member functions on `local`,
+  // including on_attach().
+  auto local = make_counted<flow::broadcaster_impl<T>>(this);
+  watch(local->as_disposable());
+  auto hdl = actor_cast<actor>(this);
+  auto fwd = make_counted<detail::item_forwarder<T>>(std::move(hdl),
+                                                     flow::observer<T>{local});
+  source.attach(flow::observer<T>{std::move(fwd)});
+  return flow::observable<T>{local};
+}
+
 template <class Observable>
 async::publisher<typename Observable::output_type>
 scheduled_actor::to_async_publisher_impl(Observable source) {
